@@ -26,7 +26,10 @@ class Parser
   ###
   evaluate: (expression) ->
     if (type = typeof expression) is 'function'
-      return expression.call @
+      original_position = @position
+      unless result = expression.call @
+        @position = original_position
+      return result
 
     else if type is 'string'
       if @input.substr(@position, expression.length) == expression
@@ -68,31 +71,23 @@ class Parser
   order given.
   ###
   any: (expressions) ->
-    original_position = @position
     for expression in expressions
       return true if @evaluate expression
-      @position = original_position
     return false
 
   ###
   Tries to match the given expression, but succeeds regardless.
   ###
   maybe: (expression) ->
-    @any [
-      expression
-      @pass
-    ]
+    @evaluate expression
+    return true
 
   ###
   Matches the given expression as many times as possible, but succeeds regardless.
   ###
   while: (expression) ->
-    while true
-      current_position = @position
-      continue if @evaluate expression
-
-      @position = current_position
-      return true
+    while @evaluate expression then ;
+    return true
 
   ###
   Tries to match the given expression. Regardless of success, no input is consumed.
