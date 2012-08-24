@@ -1,0 +1,64 @@
+Grammar:
+  Rule (NEWLINE NEWLINE Rule)*
+
+Rule:
+  RuleIdentifier ':' INDENT RuleContent
+
+RuleContent:
+  RuleLine ( NEWLINE '/' SPACE RuleLine )*
+
+RuleLine:
+  Expression ( SPACE+ Code )?
+
+Expression:
+  Sequence ( SPACE+ '/' SPACE+ Sequence )*
+
+Sequence:
+  Single (SPACE+ Single)*
+
+Single:
+  ( LabelIdentifier ':' )? [&!]? Primary [?*+]?
+
+Primary:
+  '(' SubExpression ')'
+/ RuleIdentifier
+/ String
+/ Class
+/ '.'
+/ '~'
+
+SubExpression:
+  SPACE SubExpression SPACE
+/ Expression
+
+Code:
+  '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / DOUBLE_INDENT )*
+/ '->' ( !NEWLINE . )*
+
+RuleIdentifier:
+  [A-Z] [a-zA-Z]*
+
+LabelIdentifier:
+  [_a-z]+
+
+String:
+  "'" ( ( '\\' / !"'" ) . )* "'"
+/ '"' ( ( '\\' / !'"' ) . )* '"'
+
+Class:
+  '[' ( ( '\\' / !']' ) . )* ']'
+
+DOUBLE_INDENT:
+  INDENT SPACE SPACE
+
+INDENT:
+  NEWLINE SPACE SPACE
+
+WHITESPACE:
+  NEWLINE / SPACE
+
+NEWLINE:
+  '\r' '\n'? / '\n'
+
+SPACE:
+  ' '

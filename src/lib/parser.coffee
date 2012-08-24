@@ -1,449 +1,116 @@
-###
-Parses grammar files.
-###
-class Parser
+module.exports = class Parser
 
   ###
-  Parses the given input and returns the result.
+  The initial parsing expression to apply when `parse` is called.
+  ###
+  Start: null
+
+  ###
+  Constructs a parser, optionally with some parse expression to mix in.
+  ###
+  constructor: (expressions = {}) ->
+    @reset()
+
+    for name, expression of expressions
+      @Start ?= expression
+      @[name] = expression
+
+  ###
+  Executes the start parsing expression on the given input and returns the result.
   ###
   parse: (@input) ->
-    @position = 0
-    @line     = 1
-    @column   = 1
-
-    if @Grammar() and @position == @input.length
-      true
-    else
-      @input[@position..@position+10].replace(/\n/g, '\\n').replace(/\r/g, '\\r')
-
-  # Parsing functions
-
-  ###
-  Evaluates the given expression, which can be one of:
-  - string:   succeeds when the string matches the input starting from the current position
-  - regex:    succeeds when the regex matches the input starting from the current position
-  - function: succeeds when the function succeeds
-  ###
-  evaluate: (expression) ->
-    if (type = typeof expression) is 'function'
-      original_position = @position
-      unless result = expression.call @
-        @position = original_position
-      return result
-
-    else if type is 'string'
-      if @input.substr(@position, expression.length) == expression
-        @position += expression.length
-        return true
-      return false
-
-    else
-      unless expression instanceof RegExp
-        throw new Error "Can't handle expression #{expression}"
-
-      if match = @input.substr(@position).match expression
-        @position += match[0].length
-        return true
-      return false
-
-  ###
-  Always succeeds.
-  ###
-  pass: ->
-    true
-
-  ###
-  Always fails.
-  ###
-  fail: ->
-    false
-
-  ###
-  Succeeds when all the given expressions match in the order given.
-  ###
-  all: (expressions) ->
-    for expression in expressions
-      return false unless @evaluate expression
-    return true
-
-  ###
-  Succeeds when one of the given expressions succeeds. Expressions are attempted in the
-  order given.
-  ###
-  any: (expressions) ->
-    for expression in expressions
-      return true if @evaluate expression
+    @reset()
+    if result = @Start()
+      return result if @position == @input.length
     return false
 
   ###
-  Tries to match the given expression, but succeeds regardless.
+  Restores the parser to a 'clean' state.
   ###
-  maybe: (expression) ->
-    @evaluate expression
-    return true
+  reset: ->
+    @position = 0
+
+  # Parse functions
 
   ###
-  Matches the given expression as many times as possible, but succeeds regardless.
+  Executes the given sub-expression and returns the result, and resets the position if the
+  sub-expression fails.
   ###
-  while: (expression) ->
-    while @evaluate expression then ;
-    return true
-
-  ###
-  Tries to match the given expression. Regardless of success, no input is consumed.
-  ###
-  check: (expression) ->
-    original_position = @position
-    result            = @evaluate expression
-    @position         = original_position
+  backtrack: (expression, args...) ->
+    origin    = @position
+    @position = origin unless result = expression.apply @, args
     return result
 
   ###
-  Succeeds when the given expression fails to match. Regardless of success, no input is
-  consumed.
+  Matches the given sub-expression without consuming any input.
   ###
-  reject: (expression) ->
-    not @check expression
-
-  # Grammar rules
-
-  ###
-  Grammar:
-    Rule ( NEWLINE NEWLINE Rule )*
-  ###
-  Grammar: -> @all [
-    @Rule
-    -> @while -> @all [
-      @NEWLINE
-      @NEWLINE
-      @Rule
-    ]
-  ]
+  check: (expression, args...) ->
+    result = null
+    @backtrack ->
+      result = expression.apply @, args
+      false
+    if result then { value: null } else false
 
   ###
-  Rule:
-    RuleIdentifier ':' INDENT RuleContent
+  Matches the given sub-expression if it matches without consuming any input.
   ###
-  Rule: -> @all [
-    @RuleIdentifier
-    ':'
-    @INDENT
-    @RuleContent
-  ]
+  reject: (expression, args...) ->
+    if @check.apply @, arguments then false else { value: null }
 
   ###
-  RuleContent:
-    RuleLine ( NEWLINE '/' SPACE RuleLine )*
+  Matches all the given sub-expressions in order and returns an array of the results.
   ###
-  RuleContent: -> @all [
-    @RuleLine
-    -> @while -> @all [
-      @NEWLINE
-      '/'
-      @SPACE
-      @RuleLine
-    ]
-  ]
+  all: (expressions) ->
+    results = []
+    for expression in expressions
+      expression = [ expression ] unless Array.isArray expression
+      return false unless result = @backtrack.apply @, expression
+      results.push result.value
+    { value: results }
 
   ###
-  RuleLine:
-    Expression ( SPACE+ Code )?
+  Matches one of the given sub-expression and returns the result of the first successful match.
   ###
-  RuleLine: -> @all [
-    @Expression
-    -> @maybe -> @all [
-      @SPACE
-      -> @while @SPACE
-      @Code
-    ]
-  ]
+  any: (expressions) ->
+    for expression in expressions
+      expression = [ expression ] unless Array.isArray expression
+      return result if result = @backtrack.apply @, expression
+    return false
 
   ###
-  Expression:
-    Sequence ( SPACE+ '/' SPACE+ Sequence )*
+  Matches the given sub-expression at least once and as many times as possible and returns an array
+  of the results.
   ###
-  Expression: -> @all [
-    @Sequence
-    -> @while -> @all [
-      @SPACE
-      -> @while @SPACE
-      '/'
-      @SPACE
-      -> @while @SPACE
-      @Sequence
-    ]
-  ]
+  some: (expression, args...) ->
+    result = @maybe_some.apply @, arguments
+    if result.value.length > 0 then result else false
 
   ###
-  Sequence:
-    Single ( SPACE+ Single )*
+  Matches the given sub-expression as many times as possible and returns an array of the results.
   ###
-  Sequence: -> @all [
-    @Single
-    -> @while -> @all [
-      @SPACE
-      -> @while @SPACE
-      @Single
-    ]
-  ]
+  maybe_some: (expression, args...) ->
+    value: (result.value while result = expression.apply @, args)
 
   ###
-  Single:
-    ( LabelIdentifier ':' )? [&!]? Primary [?*+]?
+  Attempts to match the given sub-expression, returning the sub-expression's result is so or a null
+  result otherwise.
   ###
-  Single: -> @all [
-    -> @maybe -> @all [
-      @LabelIdentifier
-      ':'
-    ]
-    -> @maybe /^[&!]/
-    @Primary
-    -> @maybe /^[?*+]/
-  ]
+  maybe: (expression, args...) ->
+    result = expression.apply @, args
+    result or { value: null }
 
   ###
-  Primary:
-    '(' SubExpression ')'
-  / RuleIdentifier
-  / String
-  / Class
-  / '.'
-  / '~'
+  Matches the given regular expression, returning the overall match.
   ###
-  Primary: -> @any [
-    -> @all [
-      '('
-      @SubExpression
-      ')'
-    ]
-    @RuleIdentifier
-    @String
-    @Class
-    '.'
-    '~'
-  ]
+  regex: (regex) ->
+    return false unless match = @input.substr(@position).match regex
+    @position += match[0].length
+    return value: match[0]
 
   ###
-  SubExpression:
-    Space SubExpression Space
-  / Expression
+  Matches the given literal string.
   ###
-  SubExpression: -> @any [
-    -> @all [
-      @SPACE
-      @SubExpression
-      @SPACE
-    ]
-    @Expression
-  ]
-
-  ###
-  Code:
-    '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / DOUBLE_INDENT )*
-  / '->' !NEWLINE .
-  ###
-  Code: -> @any [
-    -> @all [
-      '->'
-      @DOUBLE_INDENT
-      -> @reject @WHITESPACE
-      /^./
-      -> @while -> @any [
-        -> @all [
-          -> @reject @NEWLINE
-          /^./
-        ]
-        @DOUBLE_INDENT
-      ]
-    ]
-    -> @all [
-      '->'
-      -> @while -> @all [
-        -> @reject @NEWLINE
-        /^./
-      ]
-    ]
-  ]
-
-  ###
-  RuleIdentifier:
-    [A-Z] [_a-zA-Z]*
-  ###
-  RuleIdentifier: -> @all [
-    /^[A-Z]/
-    -> @while /^[_a-zA-Z]/
-  ]
-
-  ###
-  LabelIdentifier:
-    [_a-z]+
-  ###
-  LabelIdentifier: -> @all [
-    /^[_a-z]/
-    -> @while /^[_a-z]/
-  ]
-
-  ###
-  String:
-    "'" ( ( '\\' / !"'" ) . )* "'"
-  / '"' ( ( '\\' / !'"' ) . )* '"'
-  ###
-  String: -> @any [
-    -> @all [
-      "'"
-      -> @while -> @all [
-        -> @any [
-          '\\'
-          -> @reject "'"
-        ]
-        /^./
-      ]
-      "'"
-    ]
-    -> @all [
-      '"'
-      -> @while -> @all [
-        -> @any [
-          '\\'
-          -> @reject '"'
-        ]
-        /^./
-      ]
-      '"'
-    ]
-  ]
-
-  ###
-  Class:
-    '[' ( ( '\\' / !']' ) . )* ']'
-  ###
-  Class: -> @all [
-    '['
-    -> @while -> @all [
-      -> @any [
-        '\\'
-        -> @reject ']'
-      ]
-      /^./
-    ]
-    ']'
-  ]
-
-  ###
-  DOUBLE_INDENT:
-    INDENT SPACE SPACE
-  ###
-  DOUBLE_INDENT: -> @all [
-    @INDENT
-    @SPACE
-    @SPACE
-  ]
-
-  ###
-  INDENT:
-    NEWLINE SPACE SPACE
-  ###
-  INDENT: -> @all [
-    @NEWLINE
-    @SPACE
-    @SPACE
-  ]
-
-  ###
-  WHITESPACE:
-    NEWLINE
-  / SPACE
-  ###
-  WHITESPACE: -> @any [
-    @NEWLINE
-    @SPACE
-  ]
-
-  ###
-  NEWLINE:
-    '\r' '\n'?
-  / '\n'
-  ###
-  NEWLINE: -> @any [
-    -> @all [
-      '\r'
-      -> @maybe '\n'
-    ]
-    '\n'
-  ]
-
-  ###
-  SPACE:
-    ' '
-  ###
-  SPACE: ' '
-
-start_time = Date.now()
-console.log new Parser().parse '''
-  Grammar:
-    Rule (NEWLINE NEWLINE Rule)*
-
-  Rule:
-    RuleIdentifier ':' INDENT RuleContent
-
-  RuleContent:
-    RuleLine ( NEWLINE '/' SPACE RuleLine )*
-
-  RuleLine:
-    Expression ( SPACE+ Code )?
-
-  Expression:
-    Sequence ( SPACE+ '/' SPACE+ Sequence )*
-
-  Sequence:
-    Single (SPACE+ Single)*
-
-  Single:
-    ( LabelIdentifier ':' )? [&!]? Primary [?*+]?
-
-  Primary:
-    '(' SubExpression ')'
-  / RuleIdentifier
-  / String
-  / Class
-  / '.'
-  / '~'
-
-  SubExpression:
-    SPACE SubExpression SPACE
-  / Expression
-
-  Code:
-    '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / DOUBLE_INDENT )*
-  / '->' ( !NEWLINE . )*
-
-  RuleIdentifier:
-    [A-Z] [a-zA-Z]*
-
-  LabelIdentifier:
-    [_a-z]+
-
-  String:
-    "'" ( ( '\\\\' / !"'" ) . )* "'"
-  / '"' ( ( '\\\\' / !'"' ) . )* '"'
-
-  Class:
-    '[' ( ( '\\\\' / !']' ) . )* ']'
-
-  DOUBLE_INDENT:
-    INDENT SPACE SPACE
-
-  INDENT:
-    NEWLINE SPACE SPACE
-
-  WHITESPACE:
-    NEWLINE / SPACE
-
-  NEWLINE:
-    '\\r' '\\n'? / '\\n'
-
-  SPACE:
-    ' '
-'''
-console.log "Took #{Date.now() - start_time}"
-console.log process.memoryUsage()
+  literal: (literal) ->
+    return false unless @input.substr(@position, literal.length) == literal
+    @position += literal.length
+    return value: literal
