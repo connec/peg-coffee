@@ -1,4 +1,29 @@
+_ = require 'underscore'
+
 module.exports = class Parser
+
+  ###
+  Encapsulates a result from a parse function.
+  ###
+  Result: class Result
+
+    ###
+    Create a new parse result with the given value.
+    ###
+    constructor: (@value = null) ->
+
+  ###
+  Encapsulates a parser context, providing useful helpers.
+  ###
+  Context: class Context
+
+    ###
+    Recursively joins an array into a single string.
+    ###
+    join: (array) ->
+      return '' unless array?
+      return array if typeof array is 'string'
+      (@join member for member in array).join ''
 
   ###
   The initial parsing expression to apply when `parse` is called.
@@ -8,54 +33,54 @@ module.exports = class Parser
   ###
   Constructs a parser, optionally with some parse expression to mix in.
   ###
-  constructor: (expressions = {}) ->
-    @reset()
-
-    for name, expression of expressions
-      @Start ?= expression
-      @[name] = expression
+  constructor: (options = {}) ->
+    @options = _.extend {}, options
+    @_reset()
 
   ###
   Executes the start parsing expression on the given input and returns the result.
   ###
   parse: (@input) ->
-    @reset()
+    throw new Error 'cannot parse without start expression' unless @Start
+
+    @_reset()
     if result = @Start()
       return result if @position == @input.length
     return false
 
   ###
-  Restores the parser to a 'clean' state.
+  Matches the given sub-expression and, if successful, executes the given action.
   ###
-  reset: ->
-    @position = 0
+  action: (expression, args..., action) ->
+    @action_contexts.push {}
+    if result = expression.apply @, args
+      new @Result action.call @parse_context, @action_contexts.pop()
+    else
+      result
 
-  # Parse functions
-
   ###
-  Executes the given sub-expression and returns the result, and resets the position if the
-  sub-expression fails.
+  Matches the given sub-expression and stores the result as a parameter.
   ###
-  backtrack: (expression, args...) ->
-    origin    = @position
-    @position = origin unless result = expression.apply @, args
-    return result
+  label: (name, expression, args...) ->
+    if result = expression.apply @, args
+      @_add_parameter name, result.value
+    result
 
   ###
   Matches the given sub-expression without consuming any input.
   ###
   check: (expression, args...) ->
     result = null
-    @backtrack ->
+    @_backtrack ->
       result = expression.apply @, args
       false
-    if result then { value: null } else false
+    if result then (new @Result null) else false
 
   ###
   Matches the given sub-expression if it matches without consuming any input.
   ###
   reject: (expression, args...) ->
-    if @check.apply @, arguments then false else { value: null }
+    if @check.apply @, arguments then false else new @Result null
 
   ###
   Matches all the given sub-expressions in order and returns an array of the results.
@@ -64,9 +89,9 @@ module.exports = class Parser
     results = []
     for expression in expressions
       expression = [ expression ] unless Array.isArray expression
-      return false unless result = @backtrack.apply @, expression
+      return false unless result = @_backtrack.apply @, expression
       results.push result.value
-    { value: results }
+    new @Result results
 
   ###
   Matches one of the given sub-expression and returns the result of the first successful match.
@@ -74,8 +99,8 @@ module.exports = class Parser
   any: (expressions) ->
     for expression in expressions
       expression = [ expression ] unless Array.isArray expression
-      return result if result = @backtrack.apply @, expression
-    return false
+      return result if result = @_backtrack.apply @, expression
+    false
 
   ###
   Matches the given sub-expression at least once and as many times as possible and returns an array
@@ -89,7 +114,7 @@ module.exports = class Parser
   Matches the given sub-expression as many times as possible and returns an array of the results.
   ###
   maybe_some: (expression, args...) ->
-    value: (result.value while result = expression.apply @, args)
+    new @Result (result.value while result = expression.apply @, args)
 
   ###
   Attempts to match the given sub-expression, returning the sub-expression's result is so or a null
@@ -97,20 +122,47 @@ module.exports = class Parser
   ###
   maybe: (expression, args...) ->
     result = expression.apply @, args
-    result or { value: null }
+    result or new @Result null
 
   ###
   Matches the given regular expression, returning the overall match.
   ###
   regex: (regex) ->
     return false unless match = @input.substr(@position).match regex
+
     @position += match[0].length
-    return value: match[0]
+    new @Result match[0]
 
   ###
   Matches the given literal string.
   ###
   literal: (literal) ->
     return false unless @input.substr(@position, literal.length) == literal
+
     @position += literal.length
-    return value: literal
+    new @Result literal
+
+  ###
+  Restores the parser to a 'clean' state.
+  ###
+  _reset: ->
+    @position        = 0
+    @parse_context   = new @Context
+    @action_contexts = []
+    null
+
+  ###
+  Executes the given sub-expression and returns the result, and resets the position if the
+  sub-expression fails.
+  ###
+  _backtrack: (expression, args...) ->
+    origin    = @position
+    @position = origin unless result = expression.apply @, args
+    result
+
+  ###
+  Adds the given parameter to the current action context.
+  ###
+  _add_parameter: (name, result) ->
+    return if @action_contexts.length is 0
+    @action_contexts[-1..][0][name] = result
