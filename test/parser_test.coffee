@@ -27,6 +27,19 @@ describe 'Parser', ->
     beforeEach ->
       parser.input = 'hello world'
 
+    describe '#pass()', ->
+
+      it 'should always succeed and match nothing, regardless of input', ->
+        expect( parser.pass() ).to.deep.equal new Result()
+
+        parser.input    = 'some other string'
+        parser.position = 0
+        expect( parser.pass() ).to.deep.equal new Result()
+
+        parser.input    = ''
+        parser.position = 0
+        expect( parser.pass() ).to.deep.equal new Result()
+
     describe '#literal()', ->
 
       it 'should match and return the given parameter', ->
@@ -91,11 +104,11 @@ describe 'Parser', ->
     describe '#check()', ->
 
       it 'should try and match the given sub-expression without consuming any input', ->
-        expect( parser.check parser.literal, 'h'     ).to.deep.equal new Result null
-        expect( parser.check parser.literal, 'h'     ).to.deep.equal new Result null
+        expect( parser.check parser.literal, 'h'     ).to.deep.equal new Result()
+        expect( parser.check parser.literal, 'h'     ).to.deep.equal new Result()
         expect( parser.check parser.literal, 'e'     ).to.deep.equal false
-        expect( parser.check parser.literal, 'h'     ).to.deep.equal new Result null
-        expect( parser.check parser.regex, /^hello / ).to.deep.equal new Result null
+        expect( parser.check parser.literal, 'h'     ).to.deep.equal new Result()
+        expect( parser.check parser.regex, /^hello / ).to.deep.equal new Result()
         expect( parser.check parser.regex, /^world/  ).to.deep.equal false
 
     describe '#reject()', ->
@@ -103,10 +116,10 @@ describe 'Parser', ->
       it 'should try and reject the given sub-expression without consuming any input', ->
         expect( parser.reject parser.literal, 'h'     ).to.deep.equal false
         expect( parser.reject parser.literal, 'h'     ).to.deep.equal false
-        expect( parser.reject parser.literal, 'e'     ).to.deep.equal new Result null
+        expect( parser.reject parser.literal, 'e'     ).to.deep.equal new Result()
         expect( parser.reject parser.literal, 'h'     ).to.deep.equal false
         expect( parser.reject parser.regex, /^hello / ).to.deep.equal false
-        expect( parser.reject parser.regex, /^world/  ).to.deep.equal new Result null
+        expect( parser.reject parser.regex, /^world/  ).to.deep.equal new Result()
 
     describe '#label() and #action()', ->
 

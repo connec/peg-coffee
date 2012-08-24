@@ -10,7 +10,7 @@ module.exports = class Parser
     ###
     Create a new parse result with the given value.
     ###
-    constructor: (@value = null) ->
+    constructor: (@value) ->
 
   ###
   Encapsulates a parser context, providing useful helpers.
@@ -24,11 +24,6 @@ module.exports = class Parser
       return '' unless array?
       return array if typeof array is 'string'
       (@join member for member in array).join ''
-
-  ###
-  The initial parsing expression to apply when `parse` is called.
-  ###
-  Start: null
 
   ###
   Constructs a parser, optionally with some parse expression to mix in.
@@ -74,13 +69,13 @@ module.exports = class Parser
     @_backtrack ->
       result = expression.apply @, args
       false
-    if result then (new @Result null) else false
+    if result then new @Result() else false
 
   ###
   Matches the given sub-expression if it matches without consuming any input.
   ###
   reject: (expression, args...) ->
-    if @check.apply @, arguments then false else new @Result null
+    if @check.apply @, arguments then false else new @Result()
 
   ###
   Matches all the given sub-expressions in order and returns an array of the results.
@@ -90,7 +85,7 @@ module.exports = class Parser
     for expression in expressions
       expression = [ expression ] unless Array.isArray expression
       return false unless result = @_backtrack.apply @, expression
-      results.push result.value
+      results.push result.value unless result.value is undefined
     new @Result results
 
   ###
@@ -114,7 +109,10 @@ module.exports = class Parser
   Matches the given sub-expression as many times as possible and returns an array of the results.
   ###
   maybe_some: (expression, args...) ->
-    new @Result (result.value while result = expression.apply @, args)
+    results = []
+    while result = expression.apply @, args
+      results.push result.value unless result.value is undefined
+    new @Result results
 
   ###
   Attempts to match the given sub-expression, returning the sub-expression's result is so or a null
@@ -141,6 +139,12 @@ module.exports = class Parser
 
     @position += literal.length
     new @Result literal
+
+  ###
+  Always matches nothing.
+  ###
+  pass: ->
+    new Result()
 
   ###
   Restores the parser to a 'clean' state.

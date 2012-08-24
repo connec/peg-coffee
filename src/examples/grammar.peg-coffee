@@ -1,24 +1,36 @@
+# Matches an entire grammar
 Grammar:
-  Rule (NEWLINE NEWLINE Rule)*
+  Comment* Rule (NEWLINE NEWLINE Rule)*
 
+# Matches a comment
+Comment:
+  '# ' ( !( SPACE* NEWLINE ) . )*
+
+# Matches a single rule in the grammar, including comments
 Rule:
-  RuleIdentifier ':' INDENT RuleContent
+  (Comment NEWLINE)* RuleIdentifier ':' INDENT RuleContent
 
+# Matches the content of a rule
 RuleContent:
   RuleLine ( NEWLINE '/' SPACE RuleLine )*
 
+# Matches a single line in a rule
 RuleLine:
   Expression ( SPACE+ Code )?
 
+# Matches a single expression
 Expression:
   Sequence ( SPACE+ '/' SPACE+ Sequence )*
 
+# Matches a sequence of non-choice expressions
 Sequence:
   Single (SPACE+ Single)*
 
+# Matches a single expression (including parenthesised sub-expressions)
 Single:
   ( LabelIdentifier ':' )? [&!]? Primary [?*+]?
 
+# Matches a 'primary' expression
 Primary:
   '(' SubExpression ')'
 / RuleIdentifier
@@ -27,38 +39,51 @@ Primary:
 / '.'
 / '~'
 
+# Matches the contents of a parenthesised sub expression
 SubExpression:
   SPACE SubExpression SPACE
 / Expression
 
+# Matches code in one of two formats:
+# - block
+# - inline
 Code:
   '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / DOUBLE_INDENT )*
 / '->' ( !NEWLINE . )*
 
+# Matches an identifier for a rule
 RuleIdentifier:
   [A-Z] [a-zA-Z]*
 
+# Matches an identifier for a label
 LabelIdentifier:
   [_a-z]+
 
+# Matches a quoted string
 String:
   "'" ( ( '\\' / !"'" ) . )* "'"
 / '"' ( ( '\\' / !'"' ) . )* '"'
 
+# Matches a character class
 Class:
   '[' ( ( '\\' / !']' ) . )* ']'
 
+# Matches a double index
 DOUBLE_INDENT:
   INDENT SPACE SPACE
 
+# Matches an indent
 INDENT:
   NEWLINE SPACE SPACE
 
+# Matches a single whitespace character
 WHITESPACE:
   NEWLINE / SPACE
 
+# Matches a single newline
 NEWLINE:
   '\r' '\n'? / '\n'
 
+# Matches a single space
 SPACE:
   ' '
