@@ -12,10 +12,22 @@ module.exports = class Parser
     ###
     constructor: (@value) ->
 
+    ###
+    Determines whether or not the result is empty.
+    ###
+    is_empty: ->
+      @value is undefined
+
   ###
   Encapsulates a parser context, providing useful helpers.
   ###
   Context: class Context
+
+    ###
+    Extract the element at the given index from all elements of the given array.
+    ###
+    extract: (array, index) ->
+      element[index] for element in array
 
     ###
     Recursively joins an array into a single string.
@@ -24,6 +36,12 @@ module.exports = class Parser
       return '' unless array?
       return array if typeof array is 'string'
       (@join member for member in array).join ''
+
+    ###
+    Unescapes a string.
+    ###
+    unescape: (string) ->
+      string.replace /\\(.)/, '$1'
 
   ###
   Constructs a parser, optionally with some parse expression to mix in.
@@ -44,13 +62,23 @@ module.exports = class Parser
     return false
 
   ###
+  Matches the given sub-expression and returns an empty result.
+  ###
+  token: (expression, args...) ->
+    if expression.apply @, args
+      new @Result()
+    else
+      false
+
+  ###
   Matches the given sub-expression and, if successful, executes the given action.
   ###
   action: (expression, args..., action) ->
     @action_contexts.push {}
     if result = expression.apply @, args
-      new @Result action.call @parse_context, @action_contexts.pop()
+      new @Result action.call @parse_context, _.extend @action_contexts.pop(), $$: result.value
     else
+      @action_contexts.pop()
       result
 
   ###
@@ -81,12 +109,13 @@ module.exports = class Parser
   Matches all the given sub-expressions in order and returns an array of the results.
   ###
   all: (expressions) ->
-    results = []
-    for expression in expressions
-      expression = [ expression ] unless Array.isArray expression
-      return false unless result = @_backtrack.apply @, expression
-      results.push result.value unless result.value is undefined
-    new @Result results
+    @_backtrack ->
+      results = []
+      for expression in expressions
+        [ expression, args... ] = expression if Array.isArray expression
+        return false unless result = expression.apply @, args
+        results.push result.value unless result.is_empty()
+      new @Result results
 
   ###
   Matches one of the given sub-expression and returns the result of the first successful match.
@@ -102,8 +131,11 @@ module.exports = class Parser
   of the results.
   ###
   some: (expression, args...) ->
-    result = @maybe_some.apply @, arguments
-    if result.value.length > 0 then result else false
+    result = expression.apply @, args
+    if result
+      new Result [ result.value ].concat @maybe_some.apply(@, arguments).value
+    else
+      false
 
   ###
   Matches the given sub-expression as many times as possible and returns an array of the results.
@@ -111,7 +143,7 @@ module.exports = class Parser
   maybe_some: (expression, args...) ->
     results = []
     while result = expression.apply @, args
-      results.push result.value unless result.value is undefined
+      results.push result.value unless result.is_empty()
     new @Result results
 
   ###
@@ -139,6 +171,15 @@ module.exports = class Parser
 
     @position += literal.length
     new @Result literal
+
+  ###
+  Matches a single character.
+  ###
+  advance: ->
+    if @input[@position]?
+      new Result @input[@position++]
+    else
+      false
 
   ###
   Always matches nothing.

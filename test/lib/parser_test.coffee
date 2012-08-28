@@ -1,10 +1,14 @@
 {expect} = require 'chai'
-Parser   = require '../src/lib/parser'
+Parser   = require '../../src/lib/parser'
 Result   = Parser::Result
 
 describe 'Parser', ->
 
   parser = null
+
+  reset_parser = (input) ->
+    parser._reset()
+    parser.input = input
 
   beforeEach ->
     parser = new Parser
@@ -25,20 +29,28 @@ describe 'Parser', ->
   describe 'parse functions', ->
 
     beforeEach ->
-      parser.input = 'hello world'
+      reset_parser 'hello world'
 
     describe '#pass()', ->
 
       it 'should always succeed and match nothing, regardless of input', ->
         expect( parser.pass() ).to.deep.equal new Result()
 
-        parser.input    = 'some other string'
-        parser.position = 0
+        reset_parser 'some other string'
         expect( parser.pass() ).to.deep.equal new Result()
 
-        parser.input    = ''
-        parser.position = 0
+        reset_parser ''
         expect( parser.pass() ).to.deep.equal new Result()
+
+    describe '#advance()', ->
+
+      it 'should match a single character', ->
+        expect( parser.advance() ).to.deep.equal new Result 'h'
+        expect( parser.advance() ).to.deep.equal new Result 'e'
+        expect( parser.advance() ).to.deep.equal new Result 'l'
+
+        reset_parser ''
+        expect( parser.advance() ).to.be.false
 
     describe '#literal()', ->
 
@@ -47,7 +59,7 @@ describe 'Parser', ->
         expect( parser.literal 'l'  ).to.deep.equal new Result 'l'
         expect( parser.literal 'o'  ).to.deep.equal false
 
-        parser.input = ''
+        reset_parser ''
         expect( parser.literal '.' ).to.equal false
 
     describe '#regex()', ->
@@ -96,7 +108,7 @@ describe 'Parser', ->
 
       it 'should match all the given sub expression and return an array of the results', ->
         expect( parser.all [ [ parser.literal, 'h'   ], [ parser.literal, 'e'    ] ] ).to.deep.equal new Result [ 'h' , 'e' ]
-        expect( parser.all [ [ parser.literal, 'n'   ], [ parser.literal, 'e'    ] ] ).to.deep.equal false
+        expect( parser.all [ [ parser.literal, 'l'   ], [ parser.literal, 'n'    ] ] ).to.deep.equal false
         expect( parser.all [ [ parser.regex, /^l/    ], [ parser.regex, /^l/     ] ] ).to.deep.equal new Result [ 'l' , 'l' ]
         expect( parser.all [ [ parser.literal, 'o'   ], [ parser.regex, /^[^o]/  ] ] ).to.deep.equal new Result [ 'o' , ' ' ]
         expect( parser.all [ (-> @maybe @literal, ' '), [ parser.regex, /^./     ] ] ).to.deep.equal new Result [ null, 'w' ]
@@ -130,6 +142,13 @@ describe 'Parser', ->
             'override'
         ).to.deep.equal new Result 'override'
 
+    describe '#token()', ->
+
+      it 'should match the given sub-expression and return an empty result', ->
+        expect( parser.token parser.literal, 'hello' ).to.deep.equal new Result()
+        expect( parser.token parser.literal, 'hello' ).to.deep.equal false
+        expect( parser.token parser.regex, /\sworld/ ).to.deep.equal new Result()
+
     describe '(integration)', ->
 
       describe 'string syntax', ->
@@ -146,7 +165,7 @@ describe 'Parser', ->
                   [ @literal, '\\' ]
                   [ @reject, @literal, "'" ]
                 ] ]
-                [ @regex, /^./ ]
+                [ @advance ]
               ] ]
               [ @literal, "'" ]
             ], ({string}) -> @join string ]
@@ -157,7 +176,7 @@ describe 'Parser', ->
                   [ @literal, '\\' ]
                   [ @reject, @literal, '"' ]
                 ] ]
-                [ @regex, /^./ ]
+                [ @advance ]
               ] ]
               [ @literal, '"' ]
             ], ({string}) -> @join string ]
