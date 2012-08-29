@@ -38,6 +38,12 @@ module.exports = class Parser
       (@join member for member in array).join ''
 
     ###
+    Proxy of _.compact.
+    ###
+    compact: (array) ->
+      _.compact array
+
+    ###
     Unescapes a string.
     ###
     unescape: (string) ->

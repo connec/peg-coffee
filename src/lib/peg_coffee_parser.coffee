@@ -23,12 +23,19 @@ module.exports = class PegCoffeeParser extends Parser
   Matches a rule definition.
   ###
   Rule: ->
-    action = ({ name, def }) ->
-      type:    'definition'
-      name:    name
-      content: def
+    action = ({ comments, name, def }) ->
+      node =
+        type:     'definition'
+        name:     name
+        content:  def
+      node.comments = comments if (comments = @compact comments).length
+      node
 
     @action @all, [
+      [ @label, 'comments', @maybe_some, @any, [
+        @Comment
+        @EMPTY_LINE
+      ] ]
       [ @label, 'name', @RuleIdentifier ]
       [ @literal, ':' ]
       @INDENT
@@ -233,6 +240,22 @@ module.exports = class PegCoffeeParser extends Parser
     ]
 
   ###
+  Matches a single line comment.
+  ###
+  Comment: ->
+    action = ({ content }) ->
+      @join(content).trim()
+
+    @action @all, [
+      [ @literal, '#' ]
+      [ @label, 'content', @maybe_some, @all, [
+        [ @reject, @NEWLINE ]
+        @advance
+      ] ]
+      @NEWLINE
+    ], action
+
+  ###
   Matches a rule identifier.
   ###
   RuleIdentifier: ->
@@ -322,6 +345,15 @@ module.exports = class PegCoffeeParser extends Parser
       @NEWLINE
       @SPACE
       @SPACE
+    ]
+
+  ###
+  Matches whitespace followed eventually by a newline.
+  ###
+  EMPTY_LINE: ->
+    @token @all, [
+      [ @maybe_some, @SPACE ]
+      @NEWLINE
     ]
 
   ###
