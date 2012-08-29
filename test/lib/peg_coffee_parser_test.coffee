@@ -1,4 +1,3 @@
-{ expect }      = require 'chai'
 fs              = require 'fs'
 path            = require 'path'
 PegCoffeeParser = require '../../src/lib/peg_coffee_parser'

@@ -1,4 +1,3 @@
-{expect} = require 'chai'
 Parser   = require '../../src/lib/parser'
 Result   = Parser::Result
 
