@@ -19,8 +19,9 @@ describe 'PegCoffeeParser', ->
     describe 'the peg-coffee grammar', ->
 
       it 'should be able to parse its own grammar', ->
-        result = parser.parse fs.readFileSync path.join(path.dirname(__filename), '../support/sample.peg-coffee'), 'utf8'
-        expect( result ).to.deep.equal require '../support/sample-parsed'
+        grammar = fs.readFileSync path.join(__dirname, '../support/sample.peg-coffee'), 'utf8'
+        result  = JSON.parse fs.readFileSync path.join(__dirname, '../support/sample-parsed.json'), 'utf8'
+        expect( parser.parse grammar ).to.deep.equal result
 
   describe 'parse functions', ->
 
@@ -618,7 +619,7 @@ describe 'PegCoffeeParser', ->
 
           D:
             !E 'f'
-        ''' ).to.deep.equal new Result
+        ''' ).to.deep.equal
           type:    'grammar'
           content: [
             {

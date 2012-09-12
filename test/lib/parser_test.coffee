@@ -181,10 +181,10 @@ describe 'Parser', ->
             ], ({string}) -> @join string ]
           ]
 
-          expect( parser.parse "'hello world'" ).to.deep.equal new Result 'hello world'
+          expect( parser.parse "'hello world'" ).to.deep.equal 'hello world'
           expect( parser.parse "'hello\\'"       ).to.be.false
           expect( parser.parse "'hello\\'world'" ).to.be.ok
 
-          expect( parser.parse '"hello world"' ).to.deep.equal new Result 'hello world'
+          expect( parser.parse '"hello world"' ).to.deep.equal 'hello world'
           expect( parser.parse '"hello\\"'       ).to.be.false
           expect( parser.parse '"hello\\"world"' ).to.be.ok

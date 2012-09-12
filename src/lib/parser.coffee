@@ -64,7 +64,7 @@ module.exports = class Parser
 
     @_reset()
     if result = @Start()
-      return result if @position == @input.length
+      return result.value if @position == @input.length
     return false
 
   ###
