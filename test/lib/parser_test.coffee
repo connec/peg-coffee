@@ -6,8 +6,7 @@ describe 'Parser', ->
   parser = null
 
   reset_parser = (input) ->
-    parser._reset()
-    parser.input = input
+    parser.reset input
 
   beforeEach ->
     parser = new Parser
@@ -16,14 +15,6 @@ describe 'Parser', ->
 
     it 'should return a new Parser instance', ->
       expect( new Parser ).to.be.an.instanceof Parser
-
-    it 'should store a clone any given options', ->
-      options =
-        option1: 'value1'
-        option2: 'value2'
-      parser = new Parser options
-      expect( parser.options ).to.deep.equal { option1: 'value1', option2: 'value2' }
-      expect( parser.options ).not.to.equal options
 
   describe 'parse functions', ->
 
@@ -181,10 +172,10 @@ describe 'Parser', ->
             ], ({string}) -> @join string ]
           ]
 
-          expect( parser.parse "'hello world'" ).to.deep.equal 'hello world'
+          expect( parser.parse "'hello world'"   ).to.deep.equal 'hello world'
           expect( parser.parse "'hello\\'"       ).to.be.false
           expect( parser.parse "'hello\\'world'" ).to.be.ok
 
-          expect( parser.parse '"hello world"' ).to.deep.equal 'hello world'
+          expect( parser.parse '"hello world"'   ).to.deep.equal 'hello world'
           expect( parser.parse '"hello\\"'       ).to.be.false
           expect( parser.parse '"hello\\"world"' ).to.be.ok

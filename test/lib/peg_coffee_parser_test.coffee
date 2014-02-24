@@ -8,8 +8,7 @@ describe 'PegCoffeeParser', ->
   parser = null
 
   reset_parser = (input) ->
-    parser._reset()
-    parser.input = input
+    parser.reset input
 
   beforeEach ->
     parser = new PegCoffeeParser
@@ -320,18 +319,15 @@ describe 'PegCoffeeParser', ->
       it 'should match a sequence of Singles delimited by some spaces', ->
         reset_parser '!"hello world"   all_the_things:.*'
         expect( parser.Sequence() ).to.deep.equal new Result
-          type:    'sequence'
+          type:      'sequence'
           content: [
-            {
-              type:    'literal'
-              prefix:  '!'
-              content: 'hello world'
-            }
-            {
-              type:   'wildcard'
-              label:  'all_the_things'
-              suffix: '*'
-            }
+            type:    'literal'
+            prefix:  '!'
+            content: 'hello world'
+          ,
+            type:    'wildcard'
+            label:   'all_the_things'
+            suffix:  '*'
           ]
 
     describe '#Expression()', ->
@@ -346,46 +342,37 @@ describe 'PegCoffeeParser', ->
 
         reset_parser '!"hello world"   all_the_things:.*'
         expect( parser.Expression() ).to.deep.equal new Result
-          type:    'sequence'
+          type:      'sequence'
           content: [
-            {
-              type:    'literal'
-              prefix:  '!'
-              content: 'hello world'
-            }
-            {
-              type:   'wildcard'
-              label:  'all_the_things'
-              suffix: '*'
-            }
+            type:    'literal'
+            prefix:  '!'
+            content: 'hello world'
+          ,
+            type:    'wildcard'
+            label:   'all_the_things'
+            suffix:  '*'
           ]
 
       it 'should match a number of Sequences delimited by /', ->
         reset_parser 'label:&~+ / !"hello world"   all_the_things:.*'
         expect( parser.Expression() ).to.deep.equal new Result
-          type:    'choice'
+          type:        'choice'
           content: [
-            {
-              type:   'pass'
-              label:  'label'
-              prefix: '&'
-              suffix: '+'
-            }
-            {
-              type:    'sequence'
-              content: [
-                {
-                  type:    'literal'
-                  prefix:  '!'
-                  content: 'hello world'
-                }
-                {
-                  type:   'wildcard'
-                  label:  'all_the_things'
-                  suffix: '*'
-                }
-              ]
-            }
+            type:      'pass'
+            label:     'label'
+            prefix:    '&'
+            suffix:    '+'
+          ,
+            type:      'sequence'
+            content: [
+              type:    'literal'
+              prefix:  '!'
+              content: 'hello world'
+            ,
+              type:    'wildcard'
+              label:   'all_the_things'
+              suffix:  '*'
+            ]
           ]
 
     describe '#RuleLine()', ->
@@ -393,47 +380,38 @@ describe 'PegCoffeeParser', ->
       it 'should match an expression', ->
         reset_parser 'label:&~+ / !"hello world"   all_the_things:.*'
         expect( parser.RuleLine() ).to.deep.equal new Result
-          type:    'choice'
+          type:        'choice'
           content: [
-            {
-              type:   'pass'
-              label:  'label'
-              prefix: '&'
-              suffix: '+'
-            }
-            {
-              type:    'sequence'
-              content: [
-                {
-                  type:    'literal'
-                  prefix:  '!'
-                  content: 'hello world'
-                }
-                {
-                  type:   'wildcard'
-                  label:  'all_the_things'
-                  suffix: '*'
-                }
-              ]
-            }
+            type:      'pass'
+            label:     'label'
+            prefix:    '&'
+            suffix:    '+'
+          ,
+            type:      'sequence'
+            content: [
+              type:    'literal'
+              prefix:  '!'
+              content: 'hello world'
+            ,
+              type:    'wildcard'
+              label:   'all_the_things'
+              suffix:  '*'
+            ]
           ]
 
       it 'should match an expression followed by some inline code', ->
         reset_parser 'label:( [A-Z] [a-z]* ) -> console.log "hello world"'
         expect( parser.RuleLine() ).to.deep.equal new Result
-          type:    'sequence'
-          label:   'label'
-          action:  'console.log "hello world"'
+          type:      'sequence'
+          label:     'label'
+          action:    'console.log "hello world"'
           content: [
-            {
-              type:    'class'
-              content: 'A-Z'
-            }
-            {
-              type:    'class'
-              suffix:  '*'
-              content: 'a-z'
-            }
+            type:    'class'
+            content: 'A-Z'
+          ,
+            type:    'class'
+            suffix:  '*'
+            content: 'a-z'
           ]
 
       it 'should match an expression followed by a block of code', ->
@@ -453,37 +431,31 @@ describe 'PegCoffeeParser', ->
               [ head ].concat tail
           '''
           content: [
-            {
-              type:  'rule'
-              label: 'head'
-              name:  'Rule'
-            }
-            {
-              type:   'rule'
-              label:  'tail'
-              suffix: '*'
-              name:   'Rule'
-            }
+            type:   'rule'
+            label:  'head'
+            name:   'Rule'
+          ,
+            type:   'rule'
+            label:  'tail'
+            suffix: '*'
+            name:   'Rule'
           ]
 
-    describe '#RuleContest()', ->
+    describe '#RuleContent()', ->
 
-      it 'should match an indent followed by a single RuleLine', ->
+      it 'should match a single RuleLine', ->
         reset_parser 'label:( [A-Z] [a-z]* ) -> console.log "hello world"'
         expect( parser.RuleContent() ).to.deep.equal new Result
-          type:    'sequence'
-          label:   'label'
-          action:  'console.log "hello world"'
+          type:      'sequence'
+          label:     'label'
+          action:    'console.log "hello world"'
           content: [
-            {
-              type:    'class'
-              content: 'A-Z'
-            }
-            {
-              type:    'class'
-              suffix:  '*'
-              content: 'a-z'
-            }
+            type:    'class'
+            content: 'A-Z'
+          ,
+            type:    'class'
+            suffix:  '*'
+            content: 'a-z'
           ]
 
       it 'should match multiple RuleLines delimited by \'\\n/ \'', ->
@@ -496,46 +468,37 @@ describe 'PegCoffeeParser', ->
                 [ head ].concat tail
         '''
         expect( parser.RuleContent() ).to.deep.equal new Result
-          type:    'choice'
+          type:       'choice'
           content: [
-            {
-              type:    'sequence'
-              label:   'content'
-              suffix:  '*'
-              action:  'console.log content'
-              content: [
-                {
-                  type:   'rule'
-                  name:   'NEWLINE'
-                  prefix: '!'
-                }
-                {
-                  type: 'wildcard'
-                }
-              ]
-            }
-            {
-              type:   'sequence'
-              action: '''
-                if tail.length is 0
-                  head
-                else
-                  [ head ].concat tail
-              '''
-              content: [
-                {
-                  type:  'rule'
-                  label: 'head'
-                  name:  'Rule'
-                }
-                {
-                  type:   'rule'
-                  label:  'tail'
-                  suffix: '*'
-                  name:   'Rule'
-                }
-              ]
-            }
+            type:     'sequence'
+            label:    'content'
+            suffix:   '*'
+            action:   'console.log content'
+            content: [
+              type:   'rule'
+              name:   'NEWLINE'
+              prefix: '!'
+            ,
+              type:   'wildcard'
+            ]
+          ,
+            type:   'sequence'
+            action: '''
+              if tail.length is 0
+                head
+              else
+                [ head ].concat tail
+            '''
+            content: [
+              type:   'rule'
+              label:  'head'
+              name:   'Rule'
+            ,
+              type:   'rule'
+              label:  'tail'
+              suffix: '*'
+              name:   'Rule'
+            ]
           ]
 
     describe '#Rule()', ->
@@ -551,49 +514,40 @@ describe 'PegCoffeeParser', ->
                 [ head ].concat tail
         '''
         expect( parser.Rule() ).to.deep.equal new Result
-          type: 'definition'
-          name: 'Rule'
+          type:         'definition'
+          name:         'Rule'
           content:
-            type:    'choice'
+            type:       'choice'
             content: [
-              {
-                type:    'sequence'
-                label:   'content'
-                suffix:  '*'
-                action:  'console.log content'
-                content: [
-                  {
-                    type:   'rule'
-                    name:   'NEWLINE'
-                    prefix: '!'
-                  }
-                  {
-                    type: 'wildcard'
-                  }
-                ]
-              }
-              {
-                type:   'sequence'
-                action: '''
-                  if tail.length is 0
-                    head
-                  else
-                    [ head ].concat tail
-                '''
-                content: [
-                  {
-                    type:  'rule'
-                    label: 'head'
-                    name:  'Rule'
-                  }
-                  {
-                    type:   'rule'
-                    label:  'tail'
-                    suffix: '*'
-                    name:   'Rule'
-                  }
-                ]
-              }
+              type:     'sequence'
+              label:    'content'
+              suffix:   '*'
+              action:   'console.log content'
+              content: [
+                type:   'rule'
+                name:   'NEWLINE'
+                prefix: '!'
+              ,
+                type:   'wildcard'
+              ]
+            ,
+              type:     'sequence'
+              action: '''
+                if tail.length is 0
+                  head
+                else
+                  [ head ].concat tail
+              '''
+              content: [
+                type:   'rule'
+                label:  'head'
+                name:   'Rule'
+              ,
+                type:   'rule'
+                label:  'tail'
+                suffix: '*'
+                name:   'Rule'
+              ]
             ]
 
       it 'should match preceeding comments', ->
@@ -603,9 +557,9 @@ describe 'PegCoffeeParser', ->
             'a'
         '''
         expect( parser.Rule() ).to.deep.equal new Result
-          type:     'definition'
-          name:     'Rule'
-          comments: [ 'Some rule.' ]
+          type:      'definition'
+          name:      'Rule'
+          comments:  [ 'Some rule.' ]
           content:
             type:    'literal'
             content: 'a'
@@ -620,32 +574,26 @@ describe 'PegCoffeeParser', ->
           D:
             !E 'f'
         ''' ).to.deep.equal
-          type:    'grammar'
+          type:          'grammar'
           content: [
-            {
-              type: 'definition'
-              name: 'A'
-              content:
-                type:   'rule'
-                name:   'C'
-                label:  'b'
-                suffix: '*'
-            }
-            {
-              type: 'definition'
-              name: 'D'
-              content:
-                type:    'sequence'
-                content: [
-                  {
-                    type:   'rule'
-                    name:   'E'
-                    prefix: '!'
-                  }
-                  {
-                    type:    'literal'
-                    content: 'f'
-                  }
-                ]
-            }
+            type:        'definition'
+            name:        'A'
+            content:
+              type:      'rule'
+              name:      'C'
+              label:     'b'
+              suffix:    '*'
+          ,
+            type:        'definition'
+            name:        'D'
+            content:
+              type:      'sequence'
+              content: [
+                type:    'rule'
+                name:    'E'
+                prefix:  '!'
+              ,
+                type:    'literal'
+                content: 'f'
+              ]
           ]
