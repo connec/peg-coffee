@@ -1,75 +1,76 @@
 # Matches an entire grammar
 Grammar:
   head:Rule tail:(NEWLINE NEWLINE Rule)* ->
-    type:    'grammar'
-    content: [ head ].concat @extract tail, 2
+    parser         = class extends Parser
+    parser::Start  = head.content
+    parser::[name] = content for { name, content } in [ head ].concat @extract tail, 2
+    parser
 
 # Matches a single rule in the grammar, including comments
 Rule:
   comments:(Comment / EMPTY_LINE)* name:RuleIdentifier ':' INDENT def:RuleContent ->
-    type:     'rule'
     name:     name
-    comments: @compact comments
     content:  def
+    comments: @compact comments
 
 # Matches the content of a rule
 RuleContent:
-  head:RuleLine tail:( NEWLINE '/' SPACE RuleLine )* ->
-    if tail.length is 0
-      head
-    else
-      type:    'choice'
-      content: [ head ].concat @extract tail, 3
+  head:RuleLine tail:( NEWLINE '/' SPACE RuleLine )+ ->
+    lines = [ head ].concat @extract tail, 3
+    -> @any lines
+/ RuleLine
 
 # Matches a single line in a rule
 RuleLine:
-  expr:Expression code:( SPACE+ Code )? ->
-    if code
-      type:    'action'
-      content: expr
-      action:  code[1]
-    else
-      expr
+  expr:Expression SPACE+ action:Action ->
+    -> @action expr, action
+/ Expression
 
 # Matches a single expression
 Expression:
-  head:Sequence tail:( SPACE+ '/' SPACE+ Sequence )* ->
-    if tail.length is 0
-      head
-    else
-      type:    'choice'
-      content: [ head ].concat @extract tail, 3
+  head:Sequence tail:( SPACE+ '/' SPACE+ Sequence )+ ->
+    sequences = [ head ].concat @extract tail, 3
+    -> @any sequences
+/ Sequence
 
 # Matches a sequence of non-choice expressions
 Sequence:
-  head:Single tail:( SPACE+ Single )* ->
-    if tail.length is 0
-      head
-    else
-      type:    'sequence'
-      content: [ head ].concat @extract tail, 1
+  head:Label tail:( SPACE+ Label )+ ->
+    labels = [ head ].concat @extract tail, 1
+    -> @all labels
+/ Label
 
-# Matches a single expression (including parenthesised sub-expressions)
-Single:
-  label:( LabelIdentifier ':' )? prefix:[&!]? primary:Primary suffix:[?*+]? ->
-    primary.label  = label?[0]
-    primary.prefix = prefix
-    primary.suffix = suffix
+# Matches a labelled expression
+Label:
+  label:LabelIdentifier ':' expr:Prefix ->
+    -> @label label, expr
+/ Prefix
+
+# Matches a prefixed expression
+Prefix:
+  prefix:[&!] expr:Suffix ->
+    switch prefix
+      when '&' then -> @check expr
+      when '!' then -> @reject expr
+/ Suffix
+
+# Matches a suffixed expression
+Suffix:
+  expr:Primary suffix:[?*+] ->
+    switch suffix
+      when '?' then -> @maybe expr
+      when '*' then -> @maybe_some expr
+      when '+' then -> @some expr
+/ Primary
 
 # Matches a 'primary' expression
 Primary:
   '(' sub:SubExpression ')' -> sub
-/ RuleIdentifier            ->
-    type: 'rule'
-    name: $$
-/ String                    ->
-    type:    'literal'
-    content: $$
-/ Class                     ->
-    type:    'class'
-    content: $$
-/ '.'                       -> type: 'wildcard'
-/ '~'                       -> type: 'pass'
+/ RuleIdentifier            -> -> @[$$]()
+/ Literal                   -> $$
+/ Class                     -> $$
+/ '.'                       -> -> @advance()
+/ '~'                       -> -> @pass()
 
 # Matches the contents of a parenthesised sub expression
 SubExpression:
@@ -79,11 +80,17 @@ SubExpression:
 # Matches code in one of two formats:
 # - block
 # - inline
-Code:
+Action:
   '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / (!DOUBLE_INDENT WHITESPACE)* DOUBLE_INDENT )* ->
-    @join($$[2..]).trim()
+    code$ = @join($$[2..]).trim().replace /^    /gm, ''
+    (context) ->
+      eval "var #{k} = v" for own k, v of context
+      eval require('coffee-script').compile code$, bare: true
 / '->' SPACE+ ( !NEWLINE . )+ ->
-    @join($$[1..]).trim()
+    code$ = @join($$[1..]).trim().replace /^    /gm, ''
+    (context) ->
+      eval "var #{k} = v" for own k, v of context
+      eval require('coffee-script').compile code$, bare: true
 
 # Matches a comment
 Comment:
@@ -92,20 +99,26 @@ Comment:
 
 # Matches an identifier for a rule
 RuleIdentifier:
-  [A-Z] [_a-zA-Z]*                       -> @join $$
+  [A-Z] [_a-zA-Z]* -> @join $$
 
 # Matches an identifier for a label
 LabelIdentifier:
-  [_a-z]+                                -> @join $$
+  [_a-z]+ -> @join $$
 
 # Matches a quoted string
-String:
-  "'" content:( ( '\\' / !"'" ) . )* "'" -> @unescape @join content
-/ '"' content:( ( '\\' / !'"' ) . )* '"' -> @unescape @join content
+Literal:
+  "'" content:( ( '\\' / !"'" ) . )* "'" ->
+    literal = @unescape @join content
+    -> @literal literal
+/ '"' content:( ( '\\' / !'"' ) . )* '"' ->
+    literal = @unescape @join content
+    -> @literal literal
 
 # Matches a character class
 Class:
-  '[' content:( ( '\\' / !']' ) . )* ']' -> @unescape @join content
+  '[' content:( ( '\\' / !']' ) . )* ']' ->
+    regex = /// ^ [#{@unescape @join content}] ///
+    -> @regex regex
 
 # Matches a double index
 DOUBLE_INDENT:

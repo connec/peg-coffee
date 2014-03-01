@@ -49,7 +49,10 @@ module.exports = class Parser
     Unescapes a string.
     ###
     unescape: (string) ->
-      string.replace /\\(.)/, '$1'
+      string
+        .replace '\\n',  '\n'
+        .replace '\\r',  '\r'
+        .replace '\\\\', '\\'
 
   ###
   Constructs a parser.
@@ -76,8 +79,9 @@ module.exports = class Parser
 
     @reset input if input?
 
-    if result = @Start()
-      result.value if @position == @input.length
+    result = @Start()
+    if result and @position == @input.length
+      result.value
     else
       false
 

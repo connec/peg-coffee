@@ -7,8 +7,10 @@ module.exports = class PegCoffeeParser extends Parser
   ###
   Grammar: ->
     action = ({ head, tail }) ->
-      type:    'grammar'
-      content: [ head ].concat @extract tail, 2
+      parser         = class extends Parser
+      parser::Start  = head.content
+      parser::[name] = content for { name, content } in [ head ].concat @extract tail, 2
+      parser
 
     @action @all, [
       [ @label, 'head', @Rule ]
@@ -23,13 +25,10 @@ module.exports = class PegCoffeeParser extends Parser
   Matches a rule definition.
   ###
   Rule: ->
-    action = ({ comments, name, def }) ->
-      node =
-        type:     'definition'
-        name:     name
-        content:  def
-      node.comments = comments if (comments = @compact comments).length
-      node
+    action = ({ comments, name, content }) ->
+      name:     name
+      content:  content
+      comments: @compact comments
 
     @action @all, [
       [ @label, 'comments', @maybe_some, @any, [
@@ -39,7 +38,7 @@ module.exports = class PegCoffeeParser extends Parser
       [ @label, 'name', @RuleIdentifier ]
       [ @literal, ':' ]
       @INDENT
-      [ @label, 'def', @RuleContent ]
+      [ @label, 'content', @RuleContent ]
     ], action
 
   ###
@@ -50,8 +49,8 @@ module.exports = class PegCoffeeParser extends Parser
       if tail.length is 0
         head
       else
-        type:    'choice'
-        content: [ head ].concat  @extract tail, 2
+        extract = @extract
+        -> @any [ head ].concat extract tail, 2
 
     @action @all, [
       [ @label, 'head', @RuleLine ]
@@ -67,15 +66,17 @@ module.exports = class PegCoffeeParser extends Parser
   Matches an expression possibly followed by some code.
   ###
   RuleLine: ->
-    action = ({ expr, code }) ->
-      expr.action = code[1] if code
-      expr
+    action = ({ expr, action }) ->
+      if action
+        -> @action expr, action
+      else
+        expr
 
     @action @all, [
       [ @label, 'expr', @Expression ]
-      [ @label, 'code', @maybe, @all, [
+      [ @maybe, @all, [
         [ @some, @SPACE ]
-        @Code
+        [ @label, 'action', @Action ]
       ] ]
     ], action
 
@@ -87,8 +88,8 @@ module.exports = class PegCoffeeParser extends Parser
       if tail.length is 0
         head
       else
-        type:    'choice'
-        content: [ head ].concat @extract tail, 3
+        extract = @extract
+        -> @any [ head ].concat extract tail, 3
 
     @action @all, [
       [ @label, 'head', @Sequence ]
@@ -108,65 +109,89 @@ module.exports = class PegCoffeeParser extends Parser
       if tail.length is 0
         head
       else
-        type:    'sequence'
-        content: [ head ].concat @extract tail, 1
+        extract = @extract
+        -> @all [ head ].concat extract tail, 1
 
     @action @all, [
-      [ @label, 'head', @Single ]
+      [ @label, 'head', @Label ]
       [ @label, 'tail', @maybe_some, @all, [
         [ @some, @SPACE ]
-        @Single
+        @Label
       ] ]
     ], action
 
   ###
-  Matches a single complex expression.
+  Matches a labelled expression.
   ###
-  Single: ->
-    action = ({ label, prefix, primary, suffix }) ->
-      primary.label  = label[0] if label
-      primary.prefix = prefix   if prefix
-      primary.suffix = suffix   if suffix
-      primary
+  Label: ->
+    action = ({ label, expr }) ->
+      -> @label label, expr
 
-    @action @all, [
-      [ @label, 'label', @maybe, @all, [
-        @LabelIdentifier
+    @any [
+      [ @action, @all, [
+        [ @label, 'label', @LabelIdentifier ]
         [ @literal, ':' ]
-      ] ]
-      [ @label, 'prefix',  @maybe, @regex, /^[&!]/  ]
-      [ @label, 'primary', @Primary                 ]
-      [ @label, 'suffix',  @maybe, @regex, /^[?*+]/ ]
-    ], action
+        [ @label, 'expr', @Prefix ]
+      ], action ]
+      @Prefix
+    ]
 
   ###
-  Matches a 'primary' expression.
+  Matches a prefixed expression.
+  ###
+  Prefix: ->
+    action = ({ prefix, expr }) ->
+      switch prefix
+        when '&' then -> @check expr
+        when '!' then -> @reject expr
+
+    @any [
+      [ @action, @all, [
+        [ @label, 'prefix', @regex, /^[&!]/ ]
+        [ @label, 'expr', @Suffix ]
+      ], action ]
+      @Suffix
+    ]
+
+  ###
+  Matches a suffixed operator.
+  ###
+  Suffix: ->
+    action = ({ suffix, expr }) ->
+      switch suffix
+        when '?' then -> @maybe expr
+        when '*' then -> @maybe_some expr
+        when '+' then -> @some expr
+
+    @any [
+      [ @action, @all, [
+        [ @label, 'expr', @Primary ]
+        [ @label, 'suffix', @regex, /^[?*+]/ ]
+      ], action ]
+      @Primary
+    ]
+
+  ###
+  Matches a primary expression.
   ###
   Primary: ->
     action_sub_expression = ({ sub }) ->
-      if sub.label
-        type:    'subexpression'
-        content: sub
-      else
-        sub
+      sub
 
     action_rule = ({ $$ }) ->
-      type: 'rule'
-      name: $$
+      -> @[$$]()
 
-    action_string = ({ $$ }) ->
-      type:    'literal'
-      content: $$
+    action_literal = ({ $$ }) ->
+      $$
 
     action_class = ({ $$ }) ->
-      type:    'class'
-      content: $$
+      $$
 
-    action_wildcard = ->
-      type: 'wildcard'
+    action_advance = ->
+      -> @advance()
 
     action_pass = ->
-      type: 'pass'
+      -> @pass()
 
     @any [
       [ @action, @all, [
@@ -175,9 +200,9 @@ module.exports = class PegCoffeeParser extends Parser
         [ @literal, ')' ]
       ], action_sub_expression ]
       [ @action, @RuleIdentifier, action_rule     ]
-      [ @action, @String,         action_string   ]
+      [ @action, @Literal,        action_literal  ]
       [ @action, @Class,          action_class    ]
-      [ @action, @literal, '.',   action_wildcard ]
+      [ @action, @literal, '.',   action_advance  ]
       [ @action, @literal, '~',   action_pass     ]
     ]
 
@@ -202,12 +227,18 @@ module.exports = class PegCoffeeParser extends Parser
   - block
   - inline
   ###
-  Code: ->
+  Action: ->
     action_block = ({ $$ }) ->
-      @join($$[2..]).trim()
+      $code = @join($$[2..]).trim()
+      (context) ->
+        eval "var #{k} = v" for own k, v of context
+        eval require('coffee-script').compile $code, bare: true
 
     action_inline = ({ $$ }) ->
-      @join($$[1..]).trim()
+      $code = @join($$[1..]).trim()
+      (context) ->
+        eval "var #{k} = v" for own k, v of context
+        eval require('coffee-script').compile $code, bare: true
 
     @any [
       [ @action, @all, [
@@ -279,9 +310,11 @@ module.exports = class PegCoffeeParser extends Parser
   ###
   Matches a string and returns a StringNode.
   ###
-  String: ->
+  Literal: ->
+    p = @
     action = ({ content }) ->
-      @unescape @join content
+      literal = @unescape @join content
+      -> @literal literal
 
     @action @any, [
       [ @all, [
@@ -313,7 +346,8 @@ module.exports = class PegCoffeeParser extends Parser
   ###
   Class: ->
     action = ({ content }) ->
-      @unescape @join content
+      klass = @unescape @join content
+      -> @regex /// ^ [#{klass}] ///
 
     @action @all, [
       [ @literal, '[' ]
