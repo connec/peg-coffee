@@ -15,9 +15,14 @@ Rule:
 
 # Matches the content of a rule
 RuleContent:
-  head:RuleLine tail:( NEWLINE '/' SPACE RuleLine )+ ->
+  head:RuleLine tail:( NEWLINE '/' SPACE RuleLine )+ INDENT action:Action ->
+    lines = [ head ].concat @extract tail, 3
+    -> @action @any, lines, action
+/ head:RuleLine tail:( NEWLINE '/' SPACE RuleLine )+ ->
     lines = [ head ].concat @extract tail, 3
     -> @any lines
+/ expr:RuleLine INDENT action:Action ->
+    -> @action expr, action
 / RuleLine
 
 # Matches a single line in a rule
@@ -65,28 +70,25 @@ Suffix:
 
 # Matches a 'primary' expression
 Primary:
-  '(' sub:SubExpression ')' -> sub
-/ RuleIdentifier            -> -> @[$$]()
-/ Literal                   -> $$
-/ Class                     -> $$
-/ '.'                       -> -> @advance()
-/ '~'                       -> -> @pass()
+  '(' expr:SubExpression ')' -> expr
+/ RuleIdentifier             -> -> @[$$]()
+/ Literal
+/ Class
+/ '.'                        -> -> @advance()
+/ '~'                        -> -> @pass()
 
 # Matches the contents of a parenthesised sub expression
 SubExpression:
-  SPACE sub:SubExpression SPACE -> sub
+  SPACE expr:Expression SPACE -> expr
 / Expression
 
 # Matches code in one of two formats:
 # - block
 # - inline
 Action:
-  '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / (!DOUBLE_INDENT WHITESPACE)* DOUBLE_INDENT )* ->
-    code$ = @join($$[2..]).trim().replace /^    /gm, ''
-    (context) ->
-      eval "var #{k} = v" for own k, v of context
-      eval require('coffee-script').compile code$, bare: true
-/ '->' SPACE+ ( !NEWLINE . )+ ->
+  '->' DOUBLE_INDENT !WHITESPACE . ( !NEWLINE . / ( !DOUBLE_INDENT WHITESPACE )* DOUBLE_INDENT )*
+/ '->' SPACE+ ( !NEWLINE . )+
+  ->
     code$ = @join($$[1..]).trim().replace /^    /gm, ''
     (context) ->
       eval "var #{k} = v" for own k, v of context
@@ -107,10 +109,9 @@ LabelIdentifier:
 
 # Matches a quoted string
 Literal:
-  "'" content:( ( '\\' / !"'" ) . )* "'" ->
-    literal = @unescape @join content
-    -> @literal literal
-/ '"' content:( ( '\\' / !'"' ) . )* '"' ->
+  "'" content:( ( '\\' / !"'" ) . )* "'"
+/ '"' content:( ( '\\' / !'"' ) . )* '"'
+  ->
     literal = @unescape @join content
     -> @literal literal
 

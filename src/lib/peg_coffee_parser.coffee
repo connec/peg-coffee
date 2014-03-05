@@ -45,12 +45,17 @@ module.exports = class PegCoffeeParser extends Parser
   Matches the content of a rule.
   ###
   RuleContent: ->
-    action = ({ head, tail }) ->
-      if tail.length is 0
-        head
-      else
+    action = ({ head, tail, action }) ->
+      if action? and tail.length > 0
+        extract = @extract
+        -> @action @any, [ head ].concat(extract tail, 2), action
+      else if tail.length > 0
         extract = @extract
         -> @any [ head ].concat extract tail, 2
+      else if action?
+        -> @action head, action
+      else
+        head
 
     @action @all, [
       [ @label, 'head', @RuleLine ]
@@ -59,6 +64,10 @@ module.exports = class PegCoffeeParser extends Parser
         [ @literal, '/' ]
         @SPACE
         @RuleLine
+      ] ]
+      [ @maybe, @all, [
+        @INDENT
+        [ @label, 'action', @Action ]
       ] ]
     ], action
 
@@ -229,13 +238,13 @@ module.exports = class PegCoffeeParser extends Parser
   ###
   Action: ->
     action_block = ({ $$ }) ->
-      $code = @join($$[2..]).trim()
+      $code = @join($$[2..]).trim().replace /^    /gm, ''
       (context) ->
         eval "var #{k} = v" for own k, v of context
         eval require('coffee-script').compile $code, bare: true
 
     action_inline = ({ $$ }) ->
-      $code = @join($$[1..]).trim()
+      $code = @join($$[1..]).trim().replace /^    /gm, ''
       (context) ->
         eval "var #{k} = v" for own k, v of context
         eval require('coffee-script').compile $code, bare: true
