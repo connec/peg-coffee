@@ -244,7 +244,7 @@ module.exports = class Parser
   An `action` expression matches if the sub-expression matches.  If it matches the action is called
   with the result of the sub-expression.  The result is the return value of the action.
 
-  ```code
+  ```coffee
     action = ({ result }) -> (String.fromCharCode c.charCodeAt(0) + 3 for c in result).join ''
     new Parser('abc').action ( -> @literal 'def' ), action # fail
     new Parser('abc').action ( -> @literal 'abc' ), action # Result 'def'
@@ -262,7 +262,7 @@ module.exports = class Parser
   A `label` expression matches if the sub-expression matches, and the result is the result of the
   sub-expression.  If it matches, the named result is stored on the current action context.
 
-  ```code
+  ```coffee
     new Parser('abc').label 'match', -> @literal 'def' # fail
     new Parser('abc').label 'match', -> @literal 'abc' # Result 'abc'
   ```
@@ -275,7 +275,7 @@ module.exports = class Parser
   ###
   A `token` expression matches if the sub-expression matches.  The result is an empty result.
 
-  ```code
+  ```coffee
     new Parser('hello').token -> @literal 'world' # fail
     new Parser('hello').token -> @literal 'hello' # Result
   ```
