@@ -19,8 +19,8 @@ describe 'PegCoffeeParser', ->
 
       it 'should be able to parse its own grammar', ->
         grammar = fs.readFileSync path.join(__dirname, '../support/sample.peg-coffee'), 'utf8'
-        result  = JSON.parse fs.readFileSync path.join(__dirname, '../support/sample-parsed.json'), 'utf8'
-        expect( parser.parse grammar ).to.deep.equal result
+        expect( parser = parser.parse grammar ).to.be.ok
+        expect( new parser().parse grammar ).to.be.ok
 
   describe 'parse functions', ->
 
@@ -99,35 +99,57 @@ describe 'PegCoffeeParser', ->
 
       it 'should match a character class and return a character class node', ->
         reset_parser '[a-z]'
-        expect( parser.Class() ).to.deep.equal new Result 'a-z'
+        expect( r = parser.Class() ).to.be.ok
+
+        reset_parser 'amz0'
+        expect( r.value.call(parser).value ).to.equal c for c in 'amz'
+        expect( r.value.call parser        ).to.be.false
 
         reset_parser '[a-z\\]'
         expect( parser.Class() ).to.be.false
 
         reset_parser '[a-z\\]]'
-        expect( parser.Class() ).to.deep.equal new Result 'a-z]'
+        expect( r = parser.Class() ).to.be.ok
 
-    describe '#String()', ->
+        reset_parser 'amz]['
+        expect( r.value.call(parser).value ).to.equal c for c in 'amz]'
+        expect( r.value.call parser        ).to.be.false
+
+    describe '#Literal()', ->
 
       it 'should match a single-quoted string', ->
         reset_parser "'hello world'"
-        expect( parser.String() ).to.deep.equal new Result 'hello world'
+        expect( r = parser.Literal() ).to.be.ok
+
+        reset_parser "hello worldabc"
+        expect( r.value.call(parser).value ).to.equal 'hello world'
+        expect( r.value.call parser        ).to.be.false
 
         reset_parser "'hello\\'world\"'"
-        expect( parser.String() ).to.deep.equal new Result 'hello\'world"'
+        expect( r = parser.Literal() ).to.be.ok
+
+        reset_parser 'hello\'world"abc'
+        expect( r.value.call(parser).value ).to.equal 'hello\'world"'
 
         reset_parser "'hello\\'"
-        expect( parser.String() ).to.be.false
+        expect( parser.Literal() ).to.be.false
 
       it 'should match a double-quoted string', ->
         reset_parser '"hello world"'
-        expect( parser.String() ).to.deep.equal new Result 'hello world'
+        expect( r = parser.Literal() ).to.be.ok
+
+        reset_parser "hello worldabc"
+        expect( r.value.call(parser).value ).to.equal 'hello world'
+        expect( r.value.call parser        ).to.be.false
 
         reset_parser '"hello\\"world\'"'
-        expect( parser.String() ).to.deep.equal new Result "hello\"world'"
+        expect( r = parser.Literal() ).to.be.ok
+
+        reset_parser 'hello"world\'abc'
+        expect( r.value.call(parser).value ).to.equal 'hello"world\''
 
         reset_parser '"hello\\"'
-        expect( parser.String() ).to.be.false
+        expect( parser.Literal() ).to.be.false
 
     describe '#LabelIdentifier()', ->
 
@@ -160,24 +182,31 @@ describe 'PegCoffeeParser', ->
         reset_parser '#hello world'
         expect( parser.Comment() ).to.be.false
 
-    describe '#Code()', ->
+    describe '#Action()', ->
 
       it 'should match inline code', ->
-        reset_parser '-> console.log "hi"\n'
-        expect( parser.Code() ).to.deep.equal new Result 'console.log "hi"'
+        nonce = Math.random()
+
+        reset_parser input = "-> #{nonce}\n"
+        expect( r = parser.Action() ).to.be.ok
+        expect( r.value() ).to.equal nonce
         expect( parser.input[parser.position..] ).to.equal '\n'
 
       it 'should match double indented code', ->
-        reset_parser '->\n    console.log "hi"\n'
-        expect( parser.Code() ).to.deep.equal new Result 'console.log "hi"'
+        nonce = Math.random()
+
+        reset_parser "->\n    #{nonce}\n"
+        expect( r = parser.Action() ).to.be.ok
+        expect( r.value() ).to.equal nonce
         expect( parser.input[parser.position..] ).to.equal '\n'
 
-        reset_parser '->\n    console.log "hi"\n  \n    console.log "world"\n'
-        expect( parser.Code() ).to.deep.equal new Result 'console.log "hi"\n\nconsole.log "world"'
+        reset_parser "->\n    [\n      #{nonce}\n      #{nonce}    ]\n"
+        expect( r = parser.Action() ).to.be.ok
+        expect( r.value() ).to.deep.equal [ nonce, nonce ]
         expect( parser.input[parser.position..] ).to.equal '\n'
 
         reset_parser '->\n   console.log "hi"\n'
-        expect( parser.Code() ).to.be.false
+        expect( parser.Action() ).to.be.false
 
     describe '#SubExpression()', ->
 
@@ -224,331 +253,291 @@ describe 'PegCoffeeParser', ->
 
       it 'should match a RuleIdentifier', ->
         reset_parser 'HelloWorld'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'rule', name: 'HelloWorld'
+        expect( r = parser.Primary() ).to.be.ok
+
+        parser.HelloWorld = sinon.stub()
+        r.value.call parser
+        expect( parser.HelloWorld ).to.have.been.calledOnce
 
         reset_parser 'HELLO_WORLD'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'rule', name: 'HELLO_WORLD'
+        expect( r = parser.Primary() ).to.be.ok
+
+        parser.HELLO_WORLD = sinon.stub()
+        r.value.call parser
+        expect( parser.HELLO_WORLD ).to.have.been.calledOnce
 
         reset_parser 'hELLO_WORLD'
         expect( parser.Primary() ).to.be.false
 
       it 'should match a String', ->
         reset_parser "'hello world'"
-        expect( parser.Primary() ).to.deep.equal new Result type: 'literal', content: 'hello world'
+        expect( r = parser.Primary() ).to.be.ok
+
+        reset_parser 'hello world'
+        expect( r.value.call(parser).value ).to.equal 'hello world'
 
         reset_parser '"hello\\"world\'"'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'literal', content: "hello\"world'"
+        expect( r = parser.Primary() ).to.be.ok
+
+        reset_parser 'hello"world\''
+        expect( r.value.call(parser).value ).to.equal 'hello"world\''
 
         reset_parser "'hello\\'"
         expect( parser.Primary() ).to.be.false
 
       it 'should match a character class', ->
         reset_parser '[a-z]'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'class', content: 'a-z'
+        expect( r = parser.Primary() ).to.be.ok
+
+        reset_parser 'amz0'
+        expect( r.value.call(parser).value ).to.equal c for c in 'amz'
+        expect( r.value.call parser        ).to.be.false
 
         reset_parser '[a-z\\]'
         expect( parser.Primary() ).to.be.false
 
         reset_parser '[a-z\\]]'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'class', content: 'a-z]'
+        expect( r = parser.Primary() ).to.be.ok
+
+        reset_parser 'amz]['
+        expect( r.value.call(parser).value ).to.equal c for c in 'amz]'
+        expect( r.value.call parser        ).to.be.false
 
       it 'should match a dot wildcard', ->
         reset_parser '..'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'wildcard'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'wildcard'
+        expect( r1 = parser.Primary() ).to.be.ok
+        expect( r2 = parser.Primary() ).to.be.ok
         expect( parser.Primary() ).to.be.false
+
+        reset_parser input = Math.random().toString(36)[2..]
+        expect( r1.value.call(parser).value ).to.equal input[0]
+        expect( r2.value.call(parser).value ).to.equal input[1]
 
       it 'should match a tilde', ->
         reset_parser '~~'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'pass'
-        expect( parser.Primary() ).to.deep.equal new Result type: 'pass'
+        expect( r1 = parser.Primary() ).to.be.ok
+        expect( r2 = parser.Primary() ).to.be.ok
         expect( parser.Primary() ).to.be.false
 
-    describe '#Single()', ->
-
-      beforeEach ->
-        # For testing purposes, an expression is a literal 'hello world'
-        parser.Expression = parser.Primary
-
-      it 'should match a primary with an optional label, prefix and/or suffix', ->
-        reset_parser 'label:&(~)+'
-        expect( parser.Single() ).to.deep.equal new Result
-          type:   'pass'
-          label:  'label'
-          prefix: '&'
-          suffix: '+'
-
-        reset_parser '!"hello world"'
-        expect( parser.Single() ).to.deep.equal new Result
-          type:    'literal'
-          prefix:  '!'
-          content: 'hello world'
-
-        reset_parser 'all_the_things:.*'
-        expect( parser.Single() ).to.deep.equal new Result
-          type:   'wildcard'
-          label:  'all_the_things'
-          suffix: '*'
+        reset_parser input = Math.random().toString(36)[2..]
+        expect( r1.value.call(parser).is_empty() ).to.be.true
+        expect( r2.value.call(parser).is_empty() ).to.be.true
+        expect( parser.position ).to.equal 0
 
     describe '#Sequence()', ->
 
       beforeEach ->
         # For testing purposes, an expression is a literal 'hello world'
-        parser.Expression = parser.Expression
+        # parser.Expression = parser.Expression
 
       it 'should match a single Single', ->
-        reset_parser 'label:&(~)+'
-        expect( parser.Sequence() ).to.deep.equal new Result
-          type:   'pass'
-          label:  'label'
-          prefix: '&'
-          suffix: '+'
+        reset_parser 'label:&(.)+'
+        expect( r = parser.Sequence() ).to.be.ok
+
+        reset_parser 'a'
+        expect( r.value.call(parser).is_empty() ).to.be.true
+        expect( parser.position ).to.equal 0
 
         reset_parser '!"hello world"'
-        expect( parser.Sequence() ).to.deep.equal new Result
-          type:    'literal'
-          prefix:  '!'
-          content: 'hello world'
+        expect( r = parser.Sequence() ).to.be.ok
+
+        reset_parser 'ahello world'
+        expect( r.value.call(parser).is_empty() ).to.be.true
+        parser.advance()
+        expect( r.value.call parser ).to.be.false
 
         reset_parser 'all_the_things:.*'
-        expect( parser.Sequence() ).to.deep.equal new Result
-          type:   'wildcard'
-          label:  'all_the_things'
-          suffix: '*'
+        expect( r = parser.Sequence() ).to.be.ok
+
+        reset_parser input = Math.random().toString(36)
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ input... ]
+        expect( ctx.all_the_things         ).to.deep.equal [ input... ]
 
       it 'should match a sequence of Singles delimited by some spaces', ->
         reset_parser '!"hello world"   all_the_things:.*'
-        expect( parser.Sequence() ).to.deep.equal new Result
-          type:      'sequence'
-          content: [
-            type:    'literal'
-            prefix:  '!'
-            content: 'hello world'
-          ,
-            type:    'wildcard'
-            label:   'all_the_things'
-            suffix:  '*'
-          ]
+        expect( r = parser.Sequence() ).to.be.ok
+
+        reset_parser input = "#{Math.random().toString 36}hello world"
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ [ input... ] ]
+        expect( ctx.all_the_things         ).to.deep.equal [ input... ]
+
+        reset_parser input = "hello world#{Math.random().toString 36}"
+        expect( r.value.call parser ).to.be.false
 
     describe '#Expression()', ->
 
       it 'should match a Sequence', ->
-        reset_parser 'label:&~+'
-        expect( parser.Expression() ).to.deep.equal new Result
-          type:   'pass'
-          label:  'label'
-          prefix: '&'
-          suffix: '+'
+        reset_parser 'label:&.+'
+        expect( r = parser.Expression() ).to.be.ok
+
+        reset_parser 'a'
+        expect( r.value.call(parser).is_empty() ).to.be.true
+        expect( parser.position ).to.equal 0
 
         reset_parser '!"hello world"   all_the_things:.*'
-        expect( parser.Expression() ).to.deep.equal new Result
-          type:      'sequence'
-          content: [
-            type:    'literal'
-            prefix:  '!'
-            content: 'hello world'
-          ,
-            type:    'wildcard'
-            label:   'all_the_things'
-            suffix:  '*'
-          ]
+        expect( r = parser.Expression() ).to.be.ok
+
+        reset_parser input = "#{Math.random().toString 36}hello world"
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ [ input... ] ]
+        expect( ctx.all_the_things         ).to.deep.equal [ input... ]
+
+        reset_parser input = "hello world#{Math.random().toString 36}"
+        expect( r.value.call parser ).to.be.false
 
       it 'should match a number of Sequences delimited by /', ->
-        reset_parser 'label:&~+ / !"hello world"   all_the_things:.*'
-        expect( parser.Expression() ).to.deep.equal new Result
-          type:        'choice'
-          content: [
-            type:      'pass'
-            label:     'label'
-            prefix:    '&'
-            suffix:    '+'
-          ,
-            type:      'sequence'
-            content: [
-              type:    'literal'
-              prefix:  '!'
-              content: 'hello world'
-            ,
-              type:    'wildcard'
-              label:   'all_the_things'
-              suffix:  '*'
-            ]
-          ]
+        reset_parser '!"hello world"   all_the_things:.* / label:.+'
+        expect( r = parser.Expression() ).to.be.ok
+
+        reset_parser input = "#{Math.random().toString 36}hello world"
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ [ input... ] ]
+        expect( ctx.all_the_things         ).to.deep.equal [ input... ]
+
+        reset_parser input = "hello world#{Math.random().toString 36}"
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ input... ]
+        expect( ctx.label                  ).to.deep.equal [ input... ]
 
     describe '#RuleLine()', ->
 
       it 'should match an expression', ->
-        reset_parser 'label:&~+ / !"hello world"   all_the_things:.*'
-        expect( parser.RuleLine() ).to.deep.equal new Result
-          type:        'choice'
-          content: [
-            type:      'pass'
-            label:     'label'
-            prefix:    '&'
-            suffix:    '+'
-          ,
-            type:      'sequence'
-            content: [
-              type:    'literal'
-              prefix:  '!'
-              content: 'hello world'
-            ,
-              type:    'wildcard'
-              label:   'all_the_things'
-              suffix:  '*'
-            ]
-          ]
+        reset_parser '!"hello world"   all_the_things:.* / label:.+'
+        expect( r = parser.RuleLine() ).to.be.ok
+
+        reset_parser input = "#{Math.random().toString 36}hello world"
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ [ input... ] ]
+        expect( ctx.all_the_things         ).to.deep.equal [ input... ]
+
+        reset_parser input = "hello world#{Math.random().toString 36}"
+        parser.action_contexts.push ctx = {}
+        expect( r.value.call(parser).value ).to.deep.equal [ input... ]
+        expect( ctx.label                  ).to.deep.equal [ input... ]
 
       it 'should match an expression followed by some inline code', ->
-        reset_parser 'label:( [A-Z] [a-z]* ) -> console.log "hello world"'
-        expect( parser.RuleLine() ).to.deep.equal new Result
-          type:      'sequence'
-          label:     'label'
-          action:    'console.log "hello world"'
-          content: [
-            type:    'class'
-            content: 'A-Z'
-          ,
-            type:    'class'
-            suffix:  '*'
-            content: 'a-z'
-          ]
+        reset_parser 'label:( [A-Z] [a-z]* ) -> @nonce() ; "x#{@join label}x"'
+
+        nonce = sinon.spy()
+        parser.Context = class extends parser.Context
+          nonce: nonce
+
+        expect( r = parser.RuleLine() ).to.be.ok
+
+        reset_parser input = 'Hello'
+        expect( r.value.call(parser).value ).to.equal "x#{input}x"
+        expect( parser.Context::nonce      ).to.have.been.calledOnce
 
       it 'should match an expression followed by a block of code', ->
         reset_parser '''
-          head:Rule tail:Rule* ->
-              if tail.length is 0
-                head
-              else
-                [ head ].concat tail
+          label:( [A-Z] [a-z]* ) ->
+              @nonce()
+              "x#{@join label}x"
         '''
-        expect( parser.RuleLine() ).to.deep.equal new Result
-          type:   'sequence'
-          action: '''
-            if tail.length is 0
-              head
-            else
-              [ head ].concat tail
-          '''
-          content: [
-            type:   'rule'
-            label:  'head'
-            name:   'Rule'
-          ,
-            type:   'rule'
-            label:  'tail'
-            suffix: '*'
-            name:   'Rule'
-          ]
+
+        nonce = sinon.spy()
+        parser.Context = class extends parser.Context
+          nonce: nonce
+
+        expect( r = parser.RuleLine() ).to.be.ok
+
+        reset_parser input = 'Hello'
+        expect( r.value.call(parser).value ).to.equal "x#{input}x"
+        expect( parser.Context::nonce      ).to.have.been.calledOnce
 
     describe '#RuleContent()', ->
 
       it 'should match a single RuleLine', ->
-        reset_parser 'label:( [A-Z] [a-z]* ) -> console.log "hello world"'
-        expect( parser.RuleContent() ).to.deep.equal new Result
-          type:      'sequence'
-          label:     'label'
-          action:    'console.log "hello world"'
-          content: [
-            type:    'class'
-            content: 'A-Z'
-          ,
-            type:    'class'
-            suffix:  '*'
-            content: 'a-z'
-          ]
+        reset_parser 'label:( [A-Z] [a-z]* ) -> @nonce() ; "x#{@join label}x"'
 
-      it 'should match multiple RuleLines delimited by \'\\n/ \'', ->
+        nonce = sinon.spy()
+        parser.Context = class extends parser.Context
+          nonce: nonce
+
+        expect( r = parser.RuleContent() ).to.be.ok
+
+        reset_parser input = 'Hello'
+        expect( r.value.call(parser).value ).to.equal "x#{input}x"
+        expect( nonce                      ).to.have.been.calledOnce
+
+      it 'should match multiple, delimited RuleLines', ->
         reset_parser '''
-          content:( !NEWLINE . )* -> console.log content
-          / head:Rule tail:Rule*  ->
-              if tail.length is 0
-                head
-              else
-                [ head ].concat tail
+          a:'a' -> @nonce_a() ; a
+          / b:'b' -> @nonce_b() ; b
         '''
-        expect( parser.RuleContent() ).to.deep.equal new Result
-          type:       'choice'
-          content: [
-            type:     'sequence'
-            label:    'content'
-            suffix:   '*'
-            action:   'console.log content'
-            content: [
-              type:   'rule'
-              name:   'NEWLINE'
-              prefix: '!'
-            ,
-              type:   'wildcard'
-            ]
-          ,
-            type:   'sequence'
-            action: '''
-              if tail.length is 0
-                head
-              else
-                [ head ].concat tail
-            '''
-            content: [
-              type:   'rule'
-              label:  'head'
-              name:   'Rule'
-            ,
-              type:   'rule'
-              label:  'tail'
-              suffix: '*'
-              name:   'Rule'
-            ]
-          ]
+
+        nonce_a = sinon.spy()
+        nonce_b = sinon.spy()
+        parser.Context = class extends parser.Context
+          nonce_a: nonce_a
+          nonce_b: nonce_b
+
+        expect( r = parser.RuleContent() ).to.be.ok
+
+        reset_parser 'a'
+        expect( r.value.call(parser).value ).to.equal 'a'
+        expect( parser.Context::nonce_a    ).to.have.been.calledOnce
+        expect( parser.Context::nonce_b    ).not.to.have.been.calledOnce
+
+        reset_parser 'b'
+        nonce_a.reset()
+        nonce_b.reset()
+        expect( r.value.call(parser).value ).to.equal 'b'
+        expect( parser.Context::nonce_a    ).not.to.have.been.calledOnce
+        expect( parser.Context::nonce_b    ).to.have.been.calledOnce
+
+      it 'should match a rule action', ->
+        reset_parser '''
+          a:'a' -> @nonce_a() ; a
+          / b:'b' -> @nonce_b() ; b
+            -> @nonce_c() ; $$
+        '''
+
+        nonce_a = sinon.spy()
+        nonce_b = sinon.spy()
+        nonce_c = sinon.spy()
+        parser.Context = class extends parser.Context
+          nonce_a: nonce_a
+          nonce_b: nonce_b
+          nonce_c: nonce_c
+
+        expect( r = parser.RuleContent() ).to.be.ok
+
+        reset_parser 'a'
+        expect( r.value.call(parser).value ).to.deep.equal 'a'
+        expect( nonce_a                    ).to.have.been.calledOnce
+        expect( nonce_b                    ).not.to.have.been.calledOnce
+        expect( nonce_c                    ).to.have.been.calledOnce
+
+        reset_parser 'b'
+        nonce_a.reset()
+        nonce_b.reset()
+        nonce_c.reset()
+        expect( r.value.call(parser).value ).to.equal 'b'
+        expect( nonce_a                    ).not.to.have.been.calledOnce
+        expect( nonce_b                    ).to.have.been.calledOnce
+        expect( nonce_c                    ).to.have.been.calledOnce
 
     describe '#Rule()', ->
 
       it 'should match a rule definition', ->
         reset_parser '''
           Rule:
-            content:( !NEWLINE . )* -> console.log content
-          / head:Rule tail:Rule*    ->
-              if tail.length is 0
-                head
-              else
-                [ head ].concat tail
+            a:'a' -> a
+          / b:'b' -> b
+            -> $$
         '''
-        expect( parser.Rule() ).to.deep.equal new Result
-          type:         'definition'
-          name:         'Rule'
-          content:
-            type:       'choice'
-            content: [
-              type:     'sequence'
-              label:    'content'
-              suffix:   '*'
-              action:   'console.log content'
-              content: [
-                type:   'rule'
-                name:   'NEWLINE'
-                prefix: '!'
-              ,
-                type:   'wildcard'
-              ]
-            ,
-              type:     'sequence'
-              action: '''
-                if tail.length is 0
-                  head
-                else
-                  [ head ].concat tail
-              '''
-              content: [
-                type:   'rule'
-                label:  'head'
-                name:   'Rule'
-              ,
-                type:   'rule'
-                label:  'tail'
-                suffix: '*'
-                name:   'Rule'
-              ]
-            ]
+        expect( r = parser.Rule() ).to.be.ok
+        expect( r.value.name      ).to.equal 'Rule'
+        expect( r.value.comments  ).to.deep.equal []
+
+        reset_parser 'a'
+        expect( r.value.content.call(parser).value ).to.equal 'a'
+
+        reset_parser 'b'
+        expect( r.value.content.call(parser).value ).to.equal 'b'
 
       it 'should match preceeding comments', ->
         reset_parser '''
@@ -556,44 +545,33 @@ describe 'PegCoffeeParser', ->
           Rule:
             'a'
         '''
-        expect( parser.Rule() ).to.deep.equal new Result
-          type:      'definition'
-          name:      'Rule'
-          comments:  [ 'Some rule.' ]
-          content:
-            type:    'literal'
-            content: 'a'
+        expect( r = parser.Rule() ).to.be.ok
+        expect( r.value.name      ).to.equal 'Rule'
+        expect( r.value.comments  ).to.deep.equal [ 'Some rule.' ]
+
+        reset_parser 'a'
+        expect( r.value.content.call(parser).value ).to.equal 'a'
 
     describe '#Grammar()', ->
 
       it 'should match a number of rules', ->
-        expect( parser.parse '''
+        reset_parser '''
+          # A
           A:
-            b:C*
+            b:B
 
-          D:
-            !E 'f'
-        ''' ).to.deep.equal
-          type:          'grammar'
-          content: [
-            type:        'definition'
-            name:        'A'
-            content:
-              type:      'rule'
-              name:      'C'
-              label:     'b'
-              suffix:    '*'
-          ,
-            type:        'definition'
-            name:        'D'
-            content:
-              type:      'sequence'
-              content: [
-                type:    'rule'
-                name:    'E'
-                prefix:  '!'
-              ,
-                type:    'literal'
-                content: 'f'
-              ]
-          ]
+          # B
+          B:
+            'b'
+        '''
+        expect( r = parser.Grammar() ).to.be.ok
+        expect( r.value              ).to.be.an.instanceof Function
+        expect( r.value::A           ).to.be.an.instanceof Function
+        expect( r.value::B           ).to.be.an.instanceof Function
+
+        parser = new r.value
+        parser.reset 'b'
+        expect( parser.B().value ).to.equal 'b'
+
+        parser.reset 'b'
+        expect( parser.A().value ).to.equal 'b'

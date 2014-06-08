@@ -52,6 +52,8 @@ module.exports = class Parser
       string
         .replace '\\n',  '\n'
         .replace '\\r',  '\r'
+        .replace "\\'",  "'"
+        .replace '\\"',  '"'
         .replace '\\\\', '\\'
 
   ###
@@ -251,9 +253,9 @@ module.exports = class Parser
   ```
   ###
   action: (expression, args..., action) ->
-    @action_contexts.push {}
+    @push_context()
     if result = expression.apply @, args
-      new @Result action.call @parse_context, _.extend @action_contexts.pop(), $$: result.value
+      new @Result action.call @parse_context, _.extend @pop_context(), $$: result.value
     else
       @action_contexts.pop()
       result
@@ -294,6 +296,18 @@ module.exports = class Parser
 
     @position += match[0].length
     new @Result match[0]
+
+  ###
+  Pushes a new action context on the stack.
+  ###
+  push_context: ->
+    @action_contexts.push {}
+
+  ###
+  Pops the next action context off the stack.
+  ###
+  pop_context: ->
+    @action_contexts.pop()
 
   ###
   Executes the given sub-expression and returns the result, and resets the position if the
