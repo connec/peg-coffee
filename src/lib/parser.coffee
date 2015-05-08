@@ -10,13 +10,59 @@ module.exports = class Parser
     ###
     Create a new parse result with the given value.
     ###
-    constructor: (@value) ->
+    constructor: (value, { @name } = {}) ->
+      @named_results = {}
+      switch
+        when value instanceof ResultArray
+          # Unbox ResultArray values but preserve named results
+          @value = ( result.value for result in value.value )
+          @named_results[k] = v for own k, v of value.named_results
+        when value instanceof Result
+          # Copy value and preserve named results
+          @value = value.value
+          @name  = value.name
+          @named_results[k] = v for own k, v of value.named_results
+        else
+          @value = value
+
+      # Object.defineProperty @, 'value',
+      #   get: -> value
+      #   set: -> throw new Error "Result#value is immutable"
 
     ###
-    Determines whether or not the result is empty (value is undefined).
+    Determines whether or not the result is empty (value is undefined).  This is used to filter
+    'meaningless' results in certain situations.
     ###
     is_empty: ->
       @value is undefined
+
+  ###
+  A ResultArray is a result whose value is an array of results.
+  ###
+  ResultArray: class ResultArray extends Result
+
+    ###
+    Create a new result array for the given array of results.
+    ###
+    constructor: (value, options = {}) ->
+      super
+
+      for result, i in @value
+        @value[i] = new Result result if result instanceof ResultArray
+        @named_results[result.name] = @value[i].value if result.name?
+
+      # Object.freeze @value
+      # Object.freeze @named_results
+
+  ###
+  A failure indicates that parsing failed.
+  ###
+  Failure: class Failure
+
+    ###
+    Create a new failure with a given reason.
+    ###
+    constructor: (@reason) ->
 
   ###
   Encapsulates a parser context, providing useful helpers for manipulating results.
@@ -141,8 +187,8 @@ module.exports = class Parser
       for expression in expressions
         [ expression, args... ] = expression if Array.isArray expression
         return false unless result = expression.apply @, args
-        results.push result.value unless result.is_empty()
-      new @Result results
+        results.push result unless result.is_empty()
+      new @ResultArray results
 
   ###
   An `any` expression will match if any sub-expression matches.  The result is the result of the
@@ -179,7 +225,7 @@ module.exports = class Parser
   some: (expression, args...) ->
     result = expression.apply @, args
     if result
-      new Result [ result.value ].concat @maybe_some.apply(@, arguments).value
+      new @ResultArray [ result ].concat @maybe_some.apply(@, arguments).value
     else
       false
 
@@ -196,8 +242,8 @@ module.exports = class Parser
   maybe_some: (expression, args...) ->
     results = []
     while result = expression.apply @, args
-      results.push result.value unless result.is_empty()
-    new @Result results
+      results.push result unless result.is_empty()
+    new @ResultArray results
 
   ###
   A `some` expression will evaluate the sub-expression once. It always matches.  The result will be
@@ -251,13 +297,9 @@ module.exports = class Parser
   ```
   ###
   action: (expression, args..., action) ->
-    @push_context()
     if result = expression.apply @, args
-      ctx    = @pop_context()
-      ctx.$$ = result.value
-      new @Result action.call @parse_context, ctx
+      new @Result action.call @parse_context, make_context result
     else
-      @action_contexts.pop()
       result
 
   ###
@@ -271,8 +313,9 @@ module.exports = class Parser
   ###
   label: (name, expression, args...) ->
     if result = expression.apply @, args
-      @_add_parameter name, result.value
-    result
+      new result.constructor result.value, { name }
+    else
+      result
 
   ###
   A `token` expression matches if the sub-expression matches.  The result is an empty result.
@@ -298,18 +341,6 @@ module.exports = class Parser
     new @Result match[0]
 
   ###
-  Pushes a new action context on the stack.
-  ###
-  push_context: ->
-    @action_contexts.push {}
-
-  ###
-  Pops the next action context off the stack.
-  ###
-  pop_context: ->
-    @action_contexts.pop()
-
-  ###
   Executes the given sub-expression and returns the result, and resets the position if the
   sub-expression fails.
   ###
@@ -319,8 +350,17 @@ module.exports = class Parser
     result
 
   ###
-  Adds the given parameter to the current action context.
+  Make an action context for a given result.
   ###
-  _add_parameter: (name, result) ->
-    return if @action_contexts.length is 0
-    @action_contexts[-1..][0][name] = result
+  make_context = (result) ->
+    ctx = {}
+
+    if result instanceof ResultArray
+      ctx.$$ = new Result(result).value
+    else
+      ctx.$$ = result.value
+
+    ctx[result.name] = result.value if result.name?
+    ctx[k]           = v for own k, v of result.named_results
+
+    ctx
