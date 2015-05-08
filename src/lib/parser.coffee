@@ -1,3 +1,5 @@
+'use strict'
+
 module.exports = class Parser
 
   ###
@@ -10,24 +12,8 @@ module.exports = class Parser
     ###
     Create a new parse result with the given value.
     ###
-    constructor: (value, { @name } = {}) ->
-      @named_results = {}
-      switch
-        when value instanceof ResultArray
-          # Unbox ResultArray values but preserve named results
-          @value = ( result.value for result in value.value )
-          @named_results[k] = v for own k, v of value.named_results
-        when value instanceof Result
-          # Copy value and preserve named results
-          @value = value.value
-          @name  = value.name
-          @named_results[k] = v for own k, v of value.named_results
-        else
-          @value = value
-
-      # Object.defineProperty @, 'value',
-      #   get: -> value
-      #   set: -> throw new Error "Result#value is immutable"
+    constructor: (@value) ->
+      Object.freeze @
 
     ###
     Determines whether or not the result is empty (value is undefined).  This is used to filter
@@ -35,24 +21,6 @@ module.exports = class Parser
     ###
     is_empty: ->
       @value is undefined
-
-  ###
-  A ResultArray is a result whose value is an array of results.
-  ###
-  ResultArray: class ResultArray extends Result
-
-    ###
-    Create a new result array for the given array of results.
-    ###
-    constructor: (value, options = {}) ->
-      super
-
-      for result, i in @value
-        @value[i] = new Result result if result instanceof ResultArray
-        @named_results[result.name] = @value[i].value if result.name?
-
-      # Object.freeze @value
-      # Object.freeze @named_results
 
   ###
   A failure indicates that parsing failed.
@@ -125,7 +93,7 @@ module.exports = class Parser
 
     @reset input if input?
 
-    result = @Start()
+    result = @Start {}
     if result and @position == @input.length
       result.value
     else
@@ -166,7 +134,7 @@ module.exports = class Parser
     new Parser('world').literal 'world' # Result 'world'
   ```
   ###
-  literal: (literal) ->
+  literal: (context, literal) ->
     return false unless @input.substr(@position, literal.length) == literal
 
     @position += literal.length
@@ -181,14 +149,14 @@ module.exports = class Parser
     new Parser('abc').all ( ( -> @literal c ) for c in 'abc'  ) # Result [ 'a', 'b', 'c' ]
   ```
   ###
-  all: (expressions) ->
-    @_backtrack ->
+  all: (context, expressions) ->
+    @_backtrack context, (context) ->
       results = []
       for expression in expressions
         [ expression, args... ] = expression if Array.isArray expression
-        return false unless result = expression.apply @, args
-        results.push result unless result.is_empty()
-      new @ResultArray results
+        return false unless result = expression.call @, context, args...
+        results.push result.value unless result.is_empty()
+      new @Result results
 
   ###
   An `any` expression will match if any sub-expression matches.  The result is the result of the
@@ -206,10 +174,10 @@ module.exports = class Parser
     ]                       # Result 'bar'
   ```
   ###
-  any: (expressions) ->
+  any: (context, expressions) ->
     for expression in expressions
       expression = [ expression ] unless Array.isArray expression
-      return result if result = @_backtrack.apply @, expression
+      return result if result = @_backtrack.call @, context, expression...
     false
 
   ###
@@ -222,10 +190,10 @@ module.exports = class Parser
     new Parser('aaa').some -> @literal 'a' # Result [ 'a', 'a', 'a' ]
   ```
   ###
-  some: (expression, args...) ->
-    result = expression.apply @, args
+  some: (context, expression, args...) ->
+    result = expression.call @, context, args...
     if result
-      new @ResultArray [ result ].concat @maybe_some.apply(@, arguments).value
+      new @Result [ result.value ].concat @maybe_some(arguments...).value
     else
       false
 
@@ -239,11 +207,11 @@ module.exports = class Parser
     new Parser('aaa').maybe_some -> @literal 'a' # Result [ 'a', 'a', 'a' ]
   ```
   ###
-  maybe_some: (expression, args...) ->
+  maybe_some: (context, expression, args...) ->
     results = []
-    while result = expression.apply @, args
-      results.push result unless result.is_empty()
-    new @ResultArray results
+    while result = expression.call @, context, args...
+      results.push result.value unless result.is_empty()
+    new @Result results
 
   ###
   A `some` expression will evaluate the sub-expression once. It always matches.  The result will be
@@ -254,8 +222,8 @@ module.exports = class Parser
     new Parser('hello').maybe -> @literal 'hello' # Result 'hello'
   ```
   ###
-  maybe: (expression, args...) ->
-    result = expression.apply @, args
+  maybe: (context, expression, args...) ->
+    result = expression.call @, context, args...
     result or new @Result null
 
   ###
@@ -267,10 +235,10 @@ module.exports = class Parser
     new Parser('world').check -> @literal 'world' # Result
   ```
   ###
-  check: (expression, args...) ->
+  check: (context, expression, args...) ->
     result = null
-    @_backtrack ->
-      result = expression.apply @, args
+    @_backtrack context, ->
+      result = expression.call @, context, args...
       false
     if result then new @Result() else false
 
@@ -283,7 +251,7 @@ module.exports = class Parser
     new Parser('world').check -> @literal 'hello' # Result
   ```
   ###
-  reject: (expression, args...) ->
+  reject: (context, expression, args...) ->
     if @check.apply @, arguments then false else new @Result()
 
   ###
@@ -296,9 +264,11 @@ module.exports = class Parser
     new Parser('abc').action ( -> @literal 'abc' ), action # Result 'def'
   ```
   ###
-  action: (expression, args..., action) ->
-    if result = expression.apply @, args
-      new @Result action.call @parse_context, make_context result
+  action: (context, expression, args..., action) ->
+    context = {}
+    if result = expression.call @, context, args...
+      context.$$ = result.value
+      new @Result action.call @parse_context, context
     else
       result
 
@@ -311,11 +281,10 @@ module.exports = class Parser
     new Parser('abc').label 'match', -> @literal 'abc' # Result 'abc'
   ```
   ###
-  label: (name, expression, args...) ->
-    if result = expression.apply @, args
-      new result.constructor result.value, { name }
-    else
-      result
+  label: (context, name, expression, args...) ->
+    if result = expression.call @, context, args...
+      context[name] = result.value
+    result
 
   ###
   A `token` expression matches if the sub-expression matches.  The result is an empty result.
@@ -325,8 +294,8 @@ module.exports = class Parser
     new Parser('hello').token -> @literal 'hello' # Result
   ```
   ###
-  token: (expression, args...) ->
-    if expression.apply @, args
+  token: (context, expression, args...) ->
+    if expression.call @, context, args...
       new @Result()
     else
       false
@@ -334,7 +303,7 @@ module.exports = class Parser
   ###
   Matches the given regular expression, returning the overall match.
   ###
-  regex: (regex) ->
+  regex: (context, regex) ->
     return false unless match = @input.substr(@position).match regex
 
     @position += match[0].length
@@ -344,23 +313,13 @@ module.exports = class Parser
   Executes the given sub-expression and returns the result, and resets the position if the
   sub-expression fails.
   ###
-  _backtrack: (expression, args...) ->
-    origin    = @position
-    @position = origin unless result = expression.apply @, args
-    result
+  _backtrack: (context, expression, args...) ->
+    origin         = @position
+    sub_context    = if context? then Object.create context else context
 
-  ###
-  Make an action context for a given result.
-  ###
-  make_context = (result) ->
-    ctx = {}
-
-    if result instanceof ResultArray
-      ctx.$$ = new Result(result).value
+    if result = expression.call @, sub_context, args...
+      context[k] = v for own k, v of sub_context
     else
-      ctx.$$ = result.value
+      @position = origin
 
-    ctx[result.name] = result.value if result.name?
-    ctx[k]           = v for own k, v of result.named_results
-
-    ctx
+    result
