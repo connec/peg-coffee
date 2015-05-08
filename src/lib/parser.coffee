@@ -1,5 +1,3 @@
-_ = require 'underscore'
-
 module.exports = class Parser
 
   ###
@@ -40,10 +38,10 @@ module.exports = class Parser
       (@join member for member in array).join ''
 
     ###
-    Proxy of _.compact.
+    Filter falsey values from array.
     ###
     compact: (array) ->
-      _.compact array
+      (v for v in array when v)
 
     ###
     Unescapes a string.
@@ -255,7 +253,9 @@ module.exports = class Parser
   action: (expression, args..., action) ->
     @push_context()
     if result = expression.apply @, args
-      new @Result action.call @parse_context, _.extend @pop_context(), $$: result.value
+      ctx    = @pop_context()
+      ctx.$$ = result.value
+      new @Result action.call @parse_context, ctx
     else
       @action_contexts.pop()
       result
