@@ -81,7 +81,6 @@ module.exports = class Parser
     @input           = String input if input?
     @position        = 0
     @parse_context   = new @Context
-    @action_contexts = []
     null
 
   ###
@@ -265,10 +264,15 @@ module.exports = class Parser
   ```
   ###
   action: (context, expression, args..., action) ->
-    context = {}
-    if result = expression.call @, context, args...
-      context.$$ = result.value
-      new @Result action.call @parse_context, context
+    sub_context = {}
+    if result = expression.call @, sub_context, args...
+      # Merge the sub-expression results into the enclosing context
+      context[k]        = v for own k, v of sub_context
+
+      # The context for this action excludes the enclosing context
+      action_context    = Object.create sub_context
+      action_context.$$ = result.value
+      new @Result action.call @parse_context, action_context
     else
       result
 
@@ -314,8 +318,8 @@ module.exports = class Parser
   sub-expression fails.
   ###
   _backtrack: (context, expression, args...) ->
-    origin         = @position
-    sub_context    = if context? then Object.create context else context
+    origin      = @position
+    sub_context = if context? then Object.create context else context
 
     if result = expression.call @, sub_context, args...
       context[k] = v for own k, v of sub_context
