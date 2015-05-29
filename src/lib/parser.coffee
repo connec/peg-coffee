@@ -1,5 +1,7 @@
 'use strict'
 
+util = require './util'
+
 module.exports = class Parser
 
   ###
@@ -270,7 +272,7 @@ module.exports = class Parser
       context[k]        = v for own k, v of sub_context
 
       # The context for this action excludes the enclosing context
-      action_context    = Object.create sub_context
+      action_context    = util.merge {}, sub_context
       action_context.$$ = result.value
       new @Result action.call @parse_context, action_context
     else
@@ -319,7 +321,7 @@ module.exports = class Parser
   ###
   _backtrack: (context, expression, args...) ->
     origin      = @position
-    sub_context = if context? then Object.create context else context
+    sub_context = if context? then util.merge {}, context else context
 
     if result = expression.call @, sub_context, args...
       context[k] = v for own k, v of sub_context
