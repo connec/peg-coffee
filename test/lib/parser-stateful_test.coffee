@@ -1,4 +1,4 @@
-Parser      = require '../../src/lib/parser'
+Parser      = require '../../src/lib/parser-stateful'
 Result      = Parser::Result
 
 describe 'Parser', ->
